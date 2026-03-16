@@ -10,18 +10,15 @@
 /* Register all recompiled functions in the dispatch table */
 void mp_register_all(void);
 
-/*
- * Boot / System
- * TODO: Identify and recompile these from the disassembly
- */
-
-/* Reset vector entry point */
-/* void mp_00XXXX(void); */
-
-/* NMI handler */
-/* void mp_00XXXX(void); */
-
-/* Main loop */
-/* void mp_00XXXX(void); */
+/* Boot / System (mp_boot.c) */
+void mp_008000(void);  /* Reset vector */
+void mp_008013(void);  /* Hardware init */
+void mp_00833B(void);  /* Register init */
+void mp_00837D(void);  /* Graphics setup */
+void mp_00849D(void);  /* VRAM clearing */
+void mp_0084AF(void);  /* OAM init */
+void mp_0084D5(void);  /* Main application init */
+void mp_0080D4(void);  /* NMI handler */
+void mp_00865A(void);  /* Main loop */
 
 #endif /* MP_FUNCTIONS_H */

@@ -3,9 +3,20 @@
  *
  * Entry point: loads the ROM, configures SNES Mouse on port 1,
  * registers recompiled functions, and runs the main frame loop.
+ *
+ * The boot chain is:
+ *   mp_008000() — reset vector (hardware init → mp_0084D5)
+ *   mp_0084D5() — application init → mp_00865A (main loop)
+ *   mp_00865A() — main loop (infinite, calls mp_0080D4 via VBlank)
+ *
+ * The main loop calls func_table_call() for subroutines that haven't
+ * been recompiled yet. Those calls are no-ops until the functions are
+ * registered, which means the game will progressively come to life as
+ * more functions are recompiled.
  */
 
 #include <snesrecomp/snesrecomp.h>
+#include <mp/cpu_ops.h>
 #include <mp/functions.h>
 
 #include <stdio.h>
@@ -35,22 +46,39 @@ int main(int argc, char *argv[]) {
     /* Register all recompiled functions */
     mp_register_all();
 
-    printf("Mario Paint recomp: starting main loop\n");
+    printf("Mario Paint recomp: running hardware init\n");
 
-    /* Main frame loop */
+    /*
+     * Run hardware initialization in stages. The full boot chain
+     * (mp_008000 → mp_008013 → mp_0084D5 → mp_00865A) depends on
+     * many Bank 01 subroutines that aren't recompiled yet.
+     *
+     * For now, run the PPU/register setup directly, then drive
+     * the frame loop manually. As more functions are recompiled,
+     * we can switch to the full boot chain.
+     */
+
+    /* Switch to native mode, set up CPU state */
+    OP_SEI();
+    OP_CLC();
+    op_xce();
+    op_rep(0x30);
+    g_cpu.S = 0x1FFF;
+    g_cpu.DP = 0x0000;
+
+    /* Initialize PPU registers and display */
+    mp_00833B();
+    mp_00837D();
+
+    printf("Mario Paint recomp: hardware init complete, entering frame loop\n");
+
+    /* Main frame loop — driven by snesrecomp */
     while (snesrecomp_begin_frame()) {
-        /*
-         * TODO: Call recompiled game functions here.
-         *
-         * The boot chain will look something like:
-         *   mp_XXXXXX();  // reset vector / hardware init
-         *   mp_XXXXXX();  // NMI handler
-         *   mp_XXXXXX();  // main loop iteration
-         *
-         * For now, just run the hardware (shows a black screen
-         * with the ROM loaded into LakeSnes's memory map).
-         */
+        /* Trigger VBlank and run NMI handler */
+        snesrecomp_trigger_vblank();
+        mp_0080D4();
 
+        /* Render and present */
         snesrecomp_end_frame();
     }
 
