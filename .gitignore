@@ -1,0 +1,17 @@
+build/
+*.sfc
+*.smc
+*.zip
+*.o
+*.obj
+*.lib
+*.a
+*.exe
+*.dll
+*.so
+*.dylib
+*.bmp
+*.log
+.vs/
+CMakeSettings.json
+out/
