@@ -86,4 +86,12 @@ void mp_00823C(void);  /* Display animation */
 void mp_008B48(void);  /* Cursor movement */
 void mp_01DCB9(void);  /* Bomb timer animation */
 
+/* Canvas / UI (mp_canvas.c) */
+void mp_register_canvas(void);
+void mp_00C414(void);  /* Standard canvas tilemap */
+void mp_00C3DE(void);  /* Alternate page tilemap */
+void mp_019DFE(void);  /* Sprite slot init */
+void mp_01CDE1(void);  /* Multi-frame DMA batch loader */
+void mp_01F9BB(void);  /* Sprite renderer with culling */
+
 #endif /* MP_FUNCTIONS_H */

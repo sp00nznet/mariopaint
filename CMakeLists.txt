@@ -22,6 +22,7 @@ add_library(mp_game STATIC
     src/recomp/mp_gamelogic.c
     src/recomp/mp_gfxinit.c
     src/recomp/mp_sprites.c
+    src/recomp/mp_canvas.c
 )
 target_link_libraries(mp_game PUBLIC snesrecomp)
 

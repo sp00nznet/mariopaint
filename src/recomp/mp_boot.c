@@ -829,4 +829,7 @@ void mp_register_all(void) {
 
     /* Sprite engine */
     mp_register_sprites();
+
+    /* Canvas / UI */
+    mp_register_canvas();
 }
