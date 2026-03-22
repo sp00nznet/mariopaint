@@ -826,4 +826,7 @@ void mp_register_all(void) {
 
     /* Graphics init */
     mp_register_gfxinit();
+
+    /* Sprite engine */
+    mp_register_sprites();
 }

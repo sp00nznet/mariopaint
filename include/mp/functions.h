@@ -70,6 +70,12 @@ void mp_01DECD(void);  /* Queue BG3 tilemap DMA */
 void mp_01E6D0(void);  /* Direct DMA queue execution */
 void mp_01DE_queue_dma(const uint8_t *record, int len);
 
+/* Sprite Engine (mp_sprites.c) */
+void mp_register_sprites(void);
+void mp_01F91E(void);  /* Simple sprite renderer */
+void mp_01FA68(void);  /* Full sprite renderer (flip/palette) */
+void mp_01962C(void);  /* Sprite animation driver */
+
 /* Input / Cursor (mp_input.c) */
 void mp_register_input(void);
 void mp_01D9E1(void);  /* Mouse data read + button state */
