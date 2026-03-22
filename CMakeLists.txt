@@ -17,6 +17,10 @@ include_directories(${CMAKE_SOURCE_DIR}/include)
 # --- mp_game (static lib: recompiled game code) ---
 add_library(mp_game STATIC
     src/recomp/mp_boot.c
+    src/recomp/mp_bank01.c
+    src/recomp/mp_input.c
+    src/recomp/mp_gamelogic.c
+    src/recomp/mp_gfxinit.c
 )
 target_link_libraries(mp_game PUBLIC snesrecomp)
 

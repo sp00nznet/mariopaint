@@ -21,6 +21,10 @@
 
 #include <stdio.h>
 #include <string.h>
+#include <stdbool.h>
+
+/* Defined in main.c — set by mp_01E2CE when window is closed */
+extern bool g_quit;
 
 /* Forward declarations for functions in this file */
 void mp_008000(void);  /* Reset vector */
@@ -511,6 +515,7 @@ void mp_0084D5(void) {
     /* Wait loop: call CODE_01E2CE until $0208 is nonzero */
     do {
         func_table_call(0x01E2CE);
+        if (g_quit) return;
     } while (bus_wram_read16(0x0208) == 0);
 
     /* Set up animation parameters */
@@ -757,7 +762,7 @@ void mp_0080D4(void) {
  * handles rendering, and syncs to VBlank.
  * ======================================================================== */
 void mp_00865A(void) {
-    for (;;) {
+    while (!g_quit) {
         /* REP #$30 */
         op_rep(0x30);
 
@@ -799,6 +804,7 @@ frame_sync:
  * Register all recompiled functions in the dispatch table.
  * ======================================================================== */
 void mp_register_all(void) {
+    /* Bank 00 — boot chain and system */
     func_table_register(0x008000, mp_008000);
     func_table_register(0x008013, mp_008013);
     func_table_register(0x00833B, mp_00833B);
@@ -808,4 +814,16 @@ void mp_register_all(void) {
     func_table_register(0x0084D5, mp_0084D5);
     func_table_register(0x0080D4, mp_0080D4);
     func_table_register(0x00865A, mp_00865A);
+
+    /* Bank 01 — DMA/PPU helpers */
+    mp_register_bank01();
+
+    /* Input / cursor */
+    mp_register_input();
+
+    /* Game logic dispatch */
+    mp_register_gamelogic();
+
+    /* Graphics init */
+    mp_register_gfxinit();
 }

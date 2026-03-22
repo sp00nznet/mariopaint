@@ -2,17 +2,21 @@
  * Mario Paint — Static Recompilation
  *
  * Entry point: loads the ROM, configures SNES Mouse on port 1,
- * registers recompiled functions, and runs the main frame loop.
+ * registers recompiled functions, and runs the boot chain.
  *
- * The boot chain is:
- *   mp_008000() — reset vector (hardware init → mp_0084D5)
- *   mp_0084D5() — application init → mp_00865A (main loop)
- *   mp_00865A() — main loop (infinite, calls mp_0080D4 via VBlank)
+ * Frame architecture:
+ *   mp_01E2CE (frame sync) is the frame driver. Whenever game code
+ *   calls it — during init, the main loop, or fade effects — it
+ *   drives one complete frame cycle:
+ *     1. snesrecomp_begin_frame() — SDL event pump, input
+ *     2. snesrecomp_trigger_vblank() — PPU VBlank processing
+ *     3. mp_0080D4() — NMI handler (DMA, PPU writes, joypad)
+ *     4. snesrecomp_end_frame() — render, present, 60Hz sync
  *
- * The main loop calls func_table_call() for subroutines that haven't
- * been recompiled yet. Those calls are no-ops until the functions are
- * registered, which means the game will progressively come to life as
- * more functions are recompiled.
+ *   This means mp_00865A's infinite loop runs naturally, with
+ *   mp_01E2CE yielding to the frame driver each iteration.
+ *   g_quit is set when the user closes the window, causing
+ *   mp_00865A to break its loop and return to main().
  */
 
 #include <snesrecomp/snesrecomp.h>
@@ -20,6 +24,10 @@
 #include <mp/functions.h>
 
 #include <stdio.h>
+#include <stdbool.h>
+
+/* Global quit flag — set by mp_01E2CE when window is closed */
+bool g_quit = false;
 
 int main(int argc, char *argv[]) {
     if (argc < 2) {
@@ -46,41 +54,16 @@ int main(int argc, char *argv[]) {
     /* Register all recompiled functions */
     mp_register_all();
 
-    printf("Mario Paint recomp: running hardware init\n");
+    printf("Mario Paint recomp: running boot chain\n");
 
     /*
-     * Run hardware initialization in stages. The full boot chain
-     * (mp_008000 → mp_008013 → mp_0084D5 → mp_00865A) depends on
-     * many Bank 01 subroutines that aren't recompiled yet.
+     * Run the full boot chain. mp_01E2CE drives frames internally,
+     * so the entire sequence works naturally:
+     *   mp_008000 → mp_008013 → mp_0084D5 → mp_00865A (infinite loop)
      *
-     * For now, run the PPU/register setup directly, then drive
-     * the frame loop manually. As more functions are recompiled,
-     * we can switch to the full boot chain.
+     * mp_00865A runs until g_quit is set (window close).
      */
-
-    /* Switch to native mode, set up CPU state */
-    OP_SEI();
-    OP_CLC();
-    op_xce();
-    op_rep(0x30);
-    g_cpu.S = 0x1FFF;
-    g_cpu.DP = 0x0000;
-
-    /* Initialize PPU registers and display */
-    mp_00833B();
-    mp_00837D();
-
-    printf("Mario Paint recomp: hardware init complete, entering frame loop\n");
-
-    /* Main frame loop — driven by snesrecomp */
-    while (snesrecomp_begin_frame()) {
-        /* Trigger VBlank and run NMI handler */
-        snesrecomp_trigger_vblank();
-        mp_0080D4();
-
-        /* Render and present */
-        snesrecomp_end_frame();
-    }
+    mp_008000();
 
     snesrecomp_shutdown();
     printf("Mario Paint recomp: shutdown complete\n");

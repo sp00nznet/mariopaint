@@ -35,22 +35,45 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 
 ## Status
 
-**Early development** — project scaffolding is in place, snesrecomp backend is ready (with SNES Mouse support!), and the recompilation of game functions is beginning.
+**Active recompilation** — 55 functions recompiled across the boot chain, DMA/PPU engine, input system, game logic, and graphics loading. The full boot chain runs, the NMI handler processes DMA transfers, and the frame loop is driven by the game's own frame sync routine.
 
 ### What works
-- Project builds and links against snesrecomp
-- SNES hardware backend (PPU, APU, DMA) fully functional
-- SNES Mouse input mapped from SDL2 mouse (delta tracking, buttons, sensitivity)
-- ROM loads into LakeSnes memory map
+- Full boot chain: reset vector → hardware init → app init → main loop
+- NMI handler with OAM/VRAM/palette DMA transfers
+- PPU register mirror writeback (all display registers)
+- BG1-BG4 scroll register updates
+- HDMA setup (3 channels: windows, BG2 vertical/horizontal scroll)
+- Frame sync driven by the game's own `$01E2CE` routine
+- SNES Mouse input via snesrecomp API (displacement + buttons)
+- Cursor movement with screen bounds clamping
+- Cursor sprite rendering (reads frame data from ROM, animated cursors)
+- Game logic dispatch with toolbar show/hide timer
+- Post-logic state machine (31-entry jump table)
+- Full palette loading from ROM to CGRAM (all 256 colors)
+- Tile/sprite graphics DMA from ROM to VRAM (6 transfers: font, UI, BG3, sprites)
+- Tilemap generation and DMA queuing for BG1/BG2/BG3
+- Fade-in brightness ramp effect
+- Bomb icon and display icon animations
+- Button repeat logic for mouse and joypad
+
+### Recompilation progress
+| Area | Functions | Status |
+|------|-----------|--------|
+| Boot/System | 9 | Reset vector, HW init, register/graphics setup, NMI handler, main loop |
+| DMA/PPU Engine | 22 | OAM/VRAM/palette DMA, PPU writeback, HDMA, frame sync, joypad read |
+| Input/Cursor | 7 | Mouse read, cursor movement, sprite animations |
+| Game Logic | 5 | Toolbar timer, state dispatch, cursor rendering |
+| Graphics Init | 12 | Palette load, tile DMA, tilemap generation, border fill |
+| **Total** | **55** | |
 
 ### What's next
-- Recompile reset vector and boot chain (hardware init, PPU setup)
-- Recompile NMI handler (VBlank, DMA, input polling)
-- Recompile main loop dispatcher
-- Title screen rendering
-- Drawing canvas + mouse cursor
+- Sprite animation engine (`$01962C`, `$01FA68`, `$01F91E`)
+- Canvas tilemap builders
+- Drawing tool click handlers
+- SPC700 audio upload and playback
+- Title screen / tool screens
 - Music composer
-- All the other good stuff
+- Gnat Attack minigame
 
 ## Building
 
@@ -119,9 +142,13 @@ mariopaint/
 │   ├── cpu_ops.h           # 65816 instruction helpers
 │   └── functions.h         # Recompiled function declarations
 ├── src/
-│   ├── main/main.c         # Entry point + frame loop
+│   ├── main/main.c         # Entry point (launches full boot chain)
 │   └── recomp/
-│       └── mp_boot.c       # Boot chain (WIP)
+│       ├── mp_boot.c       # Bank 00 boot chain + NMI + main loop
+│       ├── mp_bank01.c     # Bank 01 DMA/PPU/system helpers
+│       ├── mp_input.c      # Mouse input + cursor + animations
+│       ├── mp_gamelogic.c  # Game logic dispatch + cursor rendering
+│       └── mp_gfxinit.c    # Palette/tile/tilemap loading from ROM
 └── ext/
     └── snesrecomp/         # SNES hardware backend (submodule)
 ```
