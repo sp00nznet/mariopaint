@@ -112,13 +112,17 @@ void mp_01D9E1(void) {
     int dy = ms->dy;
 
     /* Scale SDL window pixels to SNES pixels.
-     * The window is (SNES_RENDER_WIDTH * scale / 2) pixels wide,
-     * and SNES_RENDER_WIDTH is 512 (2x native 256).
-     * With scale=3, window = 768px for 256 SNES pixels = 3:1 ratio.
-     * Divide SDL deltas by ~2 for approximate scaling.
-     * (The original SNES mouse has its own sensitivity settings.) */
-    dx = dx * 2 / 3;
-    dy = dy * 2 / 3;
+     * Window = SNES_RENDER_WIDTH(512) * scale(3) / 2 = 768 pixels wide
+     * SNES native = 256 pixels wide → ratio = 768/256 = 3:1.
+     * Divide SDL motion deltas by 3 to get SNES pixel deltas.
+     * Use accumulator to preserve fractional motion for slow moves. */
+    static int accum_dx = 0, accum_dy = 0;
+    accum_dx += dx;
+    accum_dy += dy;
+    dx = accum_dx / 3;
+    dy = accum_dy / 3;
+    accum_dx -= dx * 3;
+    accum_dy -= dy * 3;
 
     /* Clamp to -127..+127 */
     if (dx > 127) dx = 127;

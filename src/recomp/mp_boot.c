@@ -663,16 +663,20 @@ void mp_0084D5(void) {
     bus_wram_write16(0x09A1, 0x0140);
 
     /* Ensure canvas VRAM is clean.
-     * The canvas pixel data lives in VRAM $0000-$2FFF (BG2 tile data area).
-     * E460 DMA transfers the canvas buffer ($7E:A000) there each frame,
-     * but it may take several frames to complete. Force-clear VRAM now
-     * so the canvas doesn't show garbage from the title screen. */
-    bus_write8(0x00, 0x2115, 0x80);  /* VMAIN: increment on high byte write */
-    bus_write8(0x00, 0x2116, 0x00);  /* VMADDL = $00 */
-    bus_write8(0x00, 0x2117, 0x00);  /* VMADDH = $00 → VRAM $0000 */
-    for (int i = 0; i < 0x3000; i++) {
-        bus_write8(0x00, 0x2118, 0x00);  /* VMDATAL */
-        bus_write8(0x00, 0x2119, 0x00);  /* VMDATAH */
+     * SNES only allows VRAM writes during VBlank or force blank.
+     * Set force blank, clear VRAM $0000-$2FFF (BG2 tile data),
+     * then restore display. */
+    {
+        uint8_t saved_inidisp = bus_wram_read8(0x0104);
+        bus_write8(0x00, 0x2100, 0x80);  /* Force blank ON */
+        bus_write8(0x00, 0x2115, 0x80);  /* VMAIN: increment on high byte */
+        bus_write8(0x00, 0x2116, 0x00);  /* VMADDL = $00 */
+        bus_write8(0x00, 0x2117, 0x00);  /* VMADDH = $00 */
+        for (int i = 0; i < 0x3000; i++) {
+            bus_write8(0x00, 0x2118, 0x00);
+            bus_write8(0x00, 0x2119, 0x00);
+        }
+        bus_write8(0x00, 0x2100, saved_inidisp);  /* Restore display */
     }
 
     /* Set up canvas DMA for ongoing refresh */
