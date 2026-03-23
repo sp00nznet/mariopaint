@@ -105,6 +105,22 @@ void mp_register_title(void);
 void mp_00D6D3(void);  /* SRAM checksum */
 void mp_018000(void);  /* Title screen + canvas init */
 
+/* Helpers (mp_helpers.c) */
+void mp_register_helpers(void);
+void mp_01E7C9(void);  /* Fade out */
+void mp_01E20C(void);  /* RNG read */
+void mp_008A12(void);  /* BG2 tilemap wrapper */
+void mp_009FC4(void);  /* Tool mode change */
+void mp_00B66C(void);  /* Pen graphics (FG) */
+void mp_00B6F4(void);  /* Pen graphics (BG) */
+void mp_00BA78(void);  /* BG3 scroll buffer init */
+void mp_00DE8E(void);  /* Stamp display buffer */
+void mp_00E25C(void);  /* SRAM validation */
+void mp_00E64F(void);  /* Palette row init */
+void mp_00F39E(void);  /* Palette display init */
+void mp_018F52(void);  /* Title→canvas transition */
+void mp_01F825(void);  /* Toolbar display data */
+
 /* Canvas / UI (mp_canvas.c) */
 void mp_register_canvas(void);
 void mp_00C414(void);  /* Standard canvas tilemap */

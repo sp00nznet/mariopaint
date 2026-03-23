@@ -838,4 +838,7 @@ void mp_register_all(void) {
 
     /* Title screen */
     mp_register_title();
+
+    /* Misc helpers */
+    mp_register_helpers();
 }

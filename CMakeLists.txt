@@ -25,6 +25,7 @@ add_library(mp_game STATIC
     src/recomp/mp_canvas.c
     src/recomp/mp_audio.c
     src/recomp/mp_title.c
+    src/recomp/mp_helpers.c
 )
 target_link_libraries(mp_game PUBLIC snesrecomp)
 
