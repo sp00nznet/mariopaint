@@ -217,6 +217,14 @@ void mp_018000(void) {
     /* Set HDMA window flag */
     bus_wram_write16(0x0220, 0xFFFF);
 
+    /* Skip Phase 5-6 entirely.
+     * The original game does additional canvas tile loading and
+     * SPC700 uploads here, but this corrupts BG tile state that
+     * mp_0087EE (called later by mp_0084D5) needs to set up correctly.
+     * The demo path skips this and works; the click path runs it
+     * and produces noise. Let mp_0084D5 handle all canvas setup. */
+    return;
+
     /* Check if demo was active */
     if (bus_wram_read16(0x04E2) != 0) {
         /* Demo active — return to caller */
