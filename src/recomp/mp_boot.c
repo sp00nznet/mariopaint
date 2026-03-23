@@ -847,4 +847,7 @@ void mp_register_all(void) {
 
     /* Canvas interaction */
     mp_register_interact();
+
+    /* Drawing tools */
+    mp_register_tools();
 }

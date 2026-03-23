@@ -144,6 +144,24 @@ void mp_008BEB(void);  /* Canvas click handler */
 void mp_008B40(void);  /* Wrapper: click handler */
 void mp_008B44(void);  /* Wrapper: cursor render */
 
+/* Drawing Tools (mp_tools.c) */
+void mp_register_tools(void);
+void mp_008B03(void);  /* Save canvas to undo */
+void mp_008B18(void);  /* Restore canvas from undo */
+void mp_008B29(void);  /* Clear scratch buffer */
+void mp_0096AB(void);  /* Tool mode restore/set */
+void mp_0096E1(void);  /* Pen graphics update */
+void mp_009853(void);  /* Toolbar: change tool */
+void mp_00987B(void);  /* Toolbar: change palette row */
+void mp_0098C3(void);  /* Palette: select tool */
+void mp_0098F8(void);  /* Palette: select stamp */
+void mp_009C25(void);  /* Pencil draw handler */
+void mp_009DAB(void);  /* Fill tool handler */
+void mp_009DFB(void);  /* Stamp tool handler */
+void mp_00A363(void);  /* Tool palette display update */
+void mp_00F921(void);  /* Palette row multiplier */
+void mp_01D56D(void);  /* Pen tile DMA */
+
 /* Canvas Interaction (mp_interact.c) */
 void mp_register_interact(void);
 void mp_009001(void);  /* Tool state update */
