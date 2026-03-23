@@ -2,8 +2,10 @@
  * Mario Paint — Recompiled audio engine.
  *
  * Handles SPC700 audio data upload and per-frame command processing.
- * The SPC700 upload uses the standard IPL handshake protocol through
- * APU ports $2140-$2143, which route through LakeSnes's real SPC700.
+ * The SPC700 upload uses a hybrid approach: wait for IPL ready ($BBAA),
+ * then write data directly to SPC RAM via bus_apu_write_ram() for
+ * reliability (the polled byte-by-byte handshake has timing issues
+ * in a recomp environment). This approach is proven in MiM recomp.
  *
  * Audio command queues at $04EC/$04FC/$050C/$051C (4 channels, 16 bytes each)
  * with write pointers at $0530-$0533 and read pointers at $052C-$052F.
@@ -16,6 +18,7 @@
 #include <snesrecomp/snesrecomp.h>
 
 #include <stdbool.h>
+#include <stdio.h>
 
 extern bool g_quit;
 
@@ -24,20 +27,45 @@ extern bool g_quit;
 #define REG_APUIO2  0x2142
 #define REG_APUIO3  0x2143
 
+/*
+ * SPC700 upload helper — reads sequential bytes from ROM,
+ * tracking position across LoROM bank boundaries.
+ */
+typedef struct {
+    uint16_t ptr_lo;
+    uint8_t  ptr_bank;
+    uint16_t y;
+} SpcReadState;
+
+static uint8_t spc_read_next(SpcReadState *s) {
+    uint8_t b = bus_read8(s->ptr_bank, s->ptr_lo + s->y);
+    s->y++;
+    if ((uint32_t)(s->ptr_lo + s->y) > 0xFFFF) {
+        s->y = 0;
+        s->ptr_lo = 0x8000;
+        s->ptr_bank++;
+    }
+    return b;
+}
+
+static uint16_t spc_read_next16(SpcReadState *s) {
+    uint8_t lo = spc_read_next(s);
+    uint8_t hi = spc_read_next(s);
+    return (uint16_t)(lo | (hi << 8));
+}
+
 /* ========================================================================
  * $01:DF25 — SPC700 audio data upload
  *
- * Implements the standard SNES SPC700 IPL upload protocol.
- * Reads audio data from the pointer at DP $CC-$CE and uploads it
- * to the SPC700's audio RAM through the APU communication ports.
+ * Hybrid upload: waits for IPL ready ($BBAA), then writes data
+ * directly to SPC RAM via bus_apu_write_ram() for reliability.
+ * The polled byte-by-byte handshake protocol has cycle-level timing
+ * dependencies that are hard to satisfy in a recomp environment.
  *
- * The protocol is a handshake:
- *   1. Wait for $2140 = $BBAA (SPC700 ready)
- *   2. Send destination address via $2142-$2143
- *   3. Send data bytes via $2140-$2141 with acknowledge handshake
- *   4. Send end marker when transfer complete
+ * Data format: [u16 size][u16 dest][size bytes]...
+ * Terminated by a block with size=0 (dest becomes execution address).
  *
- * This routes through LakeSnes's real SPC700 emulation.
+ * Source pointer read from DP $CC-$CE.
  * ======================================================================== */
 void mp_01DF25(void) {
     /* Save audio queue state */
@@ -46,103 +74,67 @@ void mp_01DF25(void) {
     bus_wram_write8(0x052E, bus_wram_read8(0x0532));
     bus_wram_write8(0x052F, bus_wram_read8(0x0533));
 
-    /* Get source pointer from DP $CC-$CE and adjust for bank boundary */
+    /* Get source pointer from DP $CC-$CE */
     uint8_t src_lo = bus_wram_read8(0xCC);
     uint8_t src_hi = bus_wram_read8(0xCD);
     uint8_t src_bank = bus_wram_read8(0xCE);
-
-    /* Adjust: Y = ptr - $8000 (offset within bank) */
     uint16_t src_addr = ((uint16_t)src_hi << 8) | src_lo;
-    uint16_t y = src_addr - 0x8000;
 
-    /* Fix up source to start at $8000 within bank */
+    /* Fix up source pointer in DP */
     bus_wram_write8(0xCC, 0x00);
     bus_wram_write8(0xCD, 0x80);
 
-    /* Wait for SPC700 ready signal ($BBAA at port 0) */
+    SpcReadState rs;
+    rs.ptr_lo = src_addr;
+    rs.ptr_bank = src_bank;
+    rs.y = 0;
+
+    printf("mp: SPC700 upload from $%02X:%04X\n", src_bank, src_addr);
+
+    /* Wait for SPC700 ready signal ($BBAA on ports 0-1) */
     {
-        uint16_t timeout = 0xFFFF;
-        while (timeout > 0) {
-            uint16_t val = bus_read8(0x00, REG_APUIO0) |
-                          ((uint16_t)bus_read8(0x00, REG_APUIO1) << 8);
-            if (val == 0xBBAA) break;
-            timeout--;
+        int max_spins = 200000;
+        int spins = 0;
+        while (1) {
+            bus_run_cycles(32);
+            uint8_t lo = bus_read8(0x00, REG_APUIO0);
+            uint8_t hi = bus_read8(0x00, REG_APUIO1);
+            if (lo == 0xAA && hi == 0xBB) break;
+            if (++spins > max_spins) {
+                printf("mp: WARNING: SPC700 ready timeout, proceeding with direct write\n");
+                break;
+            }
         }
     }
 
-    /* Start upload with initial command byte $CC */
-    uint8_t cmd = 0xCC;
+    /* Process blocks: read headers from ROM, write data directly to SPC RAM */
+    while (1) {
+        uint16_t block_size = spc_read_next16(&rs);
+        uint16_t dest_addr = spc_read_next16(&rs);
 
-    /* Main upload loop */
-    for (;;) {
-        /* Read block header: 2 bytes size, 2 bytes destination */
-        /* Read size (little-endian) */
-        uint8_t b0 = bus_read8(src_bank, 0x8000 + y);
-        y++; if (y >= 0x8000) { y = 0; src_bank += 2; }
-        uint8_t b1 = bus_read8(src_bank, 0x8000 + y);
-        y++; if (y >= 0x8000) { y = 0; src_bank += 2; }
-        uint16_t block_size = (uint16_t)b0 | ((uint16_t)b1 << 8);
+        if (block_size == 0) {
+            printf("mp: SPC700 upload done, execution at $%04X\n", dest_addr);
 
-        /* Read destination address */
-        uint8_t d0 = bus_read8(src_bank, 0x8000 + y);
-        y++; if (y >= 0x8000) { y = 0; src_bank += 2; }
-        uint8_t d1 = bus_read8(src_bank, 0x8000 + y);
-        y++; if (y >= 0x8000) { y = 0; src_bank += 2; }
+            /* Tell the SPC700 to jump to the execution address */
+            bus_write8(0x00, REG_APUIO2, (uint8_t)(dest_addr & 0xFF));
+            bus_write8(0x00, REG_APUIO3, (uint8_t)(dest_addr >> 8));
+            bus_write8(0x00, REG_APUIO1, 0x00);  /* transfer=0 (execute) */
+            bus_write8(0x00, REG_APUIO0, 0xCC);  /* command byte */
 
-        /* Send destination to APU ports 2-3 */
-        bus_write8(0x00, REG_APUIO2, d0);
-        bus_write8(0x00, REG_APUIO3, d1);
-
-        /* Check if this is the end marker (size <= 1 means execute) */
-        uint8_t exec_flag = 0;
-        if (block_size <= 1) exec_flag = 1;
-        bus_write8(0x00, REG_APUIO1, exec_flag);
-
-        /* Send the command byte + $7F-ish offset to start */
-        cmd += 2;
-        if (cmd == 0) cmd = 2;  /* Skip 0 */
-        bus_write8(0x00, REG_APUIO0, cmd);
-
-        /* Wait for SPC700 to acknowledge */
-        {
-            uint16_t timeout = 0xFFFF;
-            while (timeout > 0) {
-                if (bus_read8(0x00, REG_APUIO0) == cmd) break;
-                timeout--;
-            }
+            /* Give the SPC700 time to process and start the program */
+            bus_run_cycles(17088);
+            break;
         }
 
-        /* If execute flag was set, we're done */
-        if (exec_flag) break;
+        printf("mp:   block: %u bytes -> SPC $%04X\n", block_size, dest_addr);
 
-        /* Upload data bytes */
-        uint8_t ack = cmd;
+        /* Copy block data directly into SPC700 RAM */
+        uint16_t spc_ptr = dest_addr;
         for (uint16_t i = 0; i < block_size; i++) {
-            uint8_t data = bus_read8(src_bank, 0x8000 + y);
-            y++; if (y >= 0x8000) { y = 0; src_bank += 2; }
-
-            /* Send data byte pair: data in port 0, counter in port 1 */
-            if (i == 0) {
-                /* First byte: send as pair */
-                bus_write8(0x00, REG_APUIO1, data);
-                bus_write8(0x00, REG_APUIO0, 0x00);
-            } else {
-                bus_write8(0x00, REG_APUIO1, data);
-                ack++;
-                bus_write8(0x00, REG_APUIO0, ack);
-            }
-
-            /* Wait for acknowledge */
-            uint16_t timeout = 0xFFFF;
-            while (timeout > 0) {
-                if (bus_read8(0x00, REG_APUIO0) == ack) break;
-                timeout--;
-            }
+            uint8_t byte = spc_read_next(&rs);
+            bus_apu_write_ram(spc_ptr, byte);
+            spc_ptr++;
         }
-
-        /* Increment command for next block */
-        cmd = ack + 3;
-        if (cmd == 0) cmd = 3;
     }
 }
 
