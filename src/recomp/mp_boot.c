@@ -662,34 +662,43 @@ void mp_0084D5(void) {
 
     bus_wram_write16(0x09A1, 0x0140);
 
-    /* Ensure canvas VRAM is clean.
-     * SNES only allows VRAM writes during VBlank or force blank.
-     * Set force blank, clear VRAM $0000-$2FFF (BG2 tile data),
-     * then restore display. */
+    /* Ensure canvas VRAM is clean and BG settings are correct.
+     * Use force blank + DMA to clear VRAM $0000-$2FFF (canvas area).
+     * The canvas buffer at $7E:A000 was zeroed by mp_008A75. */
     {
-        uint8_t saved_inidisp = bus_wram_read8(0x0104);
-        bus_write8(0x00, 0x2100, 0x80);  /* Force blank ON */
-        bus_write8(0x00, 0x2115, 0x80);  /* VMAIN: increment on high byte */
-        bus_write8(0x00, 0x2116, 0x00);  /* VMADDL = $00 */
-        bus_write8(0x00, 0x2117, 0x00);  /* VMADDH = $00 */
-        for (int i = 0; i < 0x3000; i++) {
-            bus_write8(0x00, 0x2118, 0x00);
-            bus_write8(0x00, 0x2119, 0x00);
-        }
-        bus_write8(0x00, 0x2100, saved_inidisp);  /* Restore display */
+        uint8_t saved = bus_wram_read8(0x0104);
+        bus_write8(0x00, 0x2100, 0x80);  /* Force blank */
+
+        /* Ensure BG tile data designations are correct for canvas */
+        bus_write8(0x00, 0x210B, 0x06);
+        bus_wram_write8(0x010E, 0x06);
+        bus_write8(0x00, 0x210C, 0x66);
+        bus_wram_write8(0x010F, 0x66);
+
+        /* DMA the zeroed canvas buffer to VRAM.
+         * Source: $7E:A000 (canvas buffer, zeroed)
+         * Dest: VRAM $0000 (BG2 tile data)
+         * Size: $6000 bytes */
+        bus_write8(0x00, 0x2115, 0x80);  /* VMAIN: inc on high */
+        bus_write8(0x00, 0x2116, 0x00);  /* VRAM addr = $0000 */
+        bus_write8(0x00, 0x2117, 0x00);
+        bus_write8(0x00, 0x4300, 0x01);  /* DMA mode: 2-reg word */
+        bus_write8(0x00, 0x4301, 0x18);  /* Dest: $2118 */
+        bus_write8(0x00, 0x4302, 0x00);  /* Src lo: $00 */
+        bus_write8(0x00, 0x4303, 0xA0);  /* Src hi: $A0 */
+        bus_write8(0x00, 0x4304, 0x7E);  /* Src bank: $7E */
+        bus_write8(0x00, 0x4305, 0x00);  /* Size lo: $00 */
+        bus_write8(0x00, 0x4306, 0x60);  /* Size hi: $60 = $6000 */
+        bus_write8(0x00, 0x420B, 0x01);  /* Trigger DMA ch0 */
+
+        bus_write8(0x00, 0x2100, saved);  /* Restore display */
     }
 
-    /* Set up canvas DMA for ongoing refresh */
+    /* Set up ongoing canvas DMA refresh */
     bus_wram_write16(0x0202, 0x0000);
     bus_wram_write16(0x0204, 0x0000);
     bus_wram_write16(0x0208, 0x0000);
     bus_wram_write16(0x0206, 0x0001);
-
-    /* Ensure BG tile data designations are correct for canvas mode */
-    bus_write8(0x00, 0x210B, 0x06);  /* BG12NBA */
-    bus_wram_write8(0x010E, 0x06);
-    bus_write8(0x00, 0x210C, 0x66);  /* BG34NBA */
-    bus_wram_write8(0x010F, 0x66);
 
     printf("Mario Paint recomp: canvas mode ready\n");
 
