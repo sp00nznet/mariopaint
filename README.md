@@ -35,7 +35,7 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 
 ## Status
 
-**Active recompilation** — 89 functions recompiled across 10 source files. The full boot chain runs through title screen, palette/tile loading, audio upload, and into the main game loop with cursor rendering and input processing.
+**Active recompilation** — 110 functions recompiled across 12 source files. The full boot chain runs through title screen (with animation and demo playback), audio upload via direct SPC700 RAM writes, and into the main game loop with cursor rendering, toolbar interaction, and canvas click handling.
 
 ### What works
 - Full boot chain: reset vector → hardware init → title screen → canvas mode → main loop
@@ -74,7 +74,8 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 | Audio Engine | 11 | `mp_audio.c` |
 | Title Screen | 2 | `mp_title.c` |
 | Boot Helpers | 13 | `mp_helpers.c` |
-| **Total** | **89** | |
+| Title Loop/Demo | 12 | `mp_titleloop.c` |
+| **Total** | **110** | |
 
 ### What's next
 - Sprite animation engine (`$01962C`, `$01FA68`, `$01F91E`)
