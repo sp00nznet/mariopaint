@@ -109,19 +109,14 @@ void mp_01D9E1(void) {
      *   if (disp & 0x80) disp |= 0xFF00  (sign extend to 16-bit)
      */
     /*
-     * Use absolute mouse position for accurate cursor tracking.
-     * Compute displacement as the difference from previous SNES position.
-     * This eliminates drift from relative delta rounding errors.
+     * Use raw SDL mouse deltas. The SNES mouse displacement is in
+     * SNES pixels; SDL gives window pixels. With 3x window scale,
+     * one SNES pixel ≈ 3 window pixels. We divide by 2 as a
+     * compromise (not too fast, not too slow). The original SNES
+     * mouse has hardware sensitivity settings that we don't emulate.
      */
-    static int prev_snes_x = 128, prev_snes_y = 128;
-    int dx = 0, dy = 0;
-
-    if (ms->abs_valid) {
-        dx = ms->abs_x - prev_snes_x;
-        dy = ms->abs_y - prev_snes_y;
-        prev_snes_x = ms->abs_x;
-        prev_snes_y = ms->abs_y;
-    }
+    int dx = ms->dx / 2;
+    int dy = ms->dy / 2;
 
     /* Clamp to -127..+127 */
     if (dx > 127) dx = 127;
