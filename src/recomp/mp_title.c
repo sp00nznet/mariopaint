@@ -283,11 +283,15 @@ void mp_018000(void) {
     mp_01E2F3();
 
     /* === Phase 6: Restore canvas display settings === */
+    /* Original sets $04/$44 (title tile bases) here, but mp_0084D5
+     * calls mp_0087EE later which expects $06/$66 (canvas tile bases).
+     * Set canvas values directly to avoid corruption during the
+     * frames between here and mp_0087EE. */
     op_sep(0x20);
-    bus_write8(0x00, REG_BG12NBA, 0x04);
-    bus_wram_write8(0x010E, 0x04);
-    bus_write8(0x00, REG_BG34NBA, 0x44);
-    bus_wram_write8(0x010F, 0x44);
+    bus_write8(0x00, REG_BG12NBA, 0x06);
+    bus_wram_write8(0x010E, 0x06);
+    bus_write8(0x00, REG_BG34NBA, 0x66);
+    bus_wram_write8(0x010F, 0x66);
 
     op_rep(0x20);
 
