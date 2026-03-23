@@ -853,4 +853,7 @@ void mp_register_all(void) {
 
     /* Drawing core */
     mp_register_draw();
+
+    /* Miscellaneous */
+    mp_register_misc();
 }

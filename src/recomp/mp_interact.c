@@ -189,16 +189,6 @@ void mp_0095E7(void) {
 }
 
 /* ========================================================================
- * $00:9760 — Right-click / P2 button handler
- *
- * Handles right-click or player 2 button actions.
- * ======================================================================== */
-void mp_009760(void) {
-    /* Complex handler — dispatch to sub-routines */
-    func_table_call(0x009760);  /* Will be a no-op until self-registered */
-}
-
-/* ========================================================================
  * $00:8D2C — Toolbar zone hit test
  *
  * Determines which toolbar slot the cursor is over.
@@ -278,29 +268,7 @@ void mp_01833F(void) {
 /* State 2+: Complex animation — dispatch via func_table_call */
 void mp_01834B(void) { func_table_call(0x01834B); }
 
-/* ========================================================================
- * $01:91FE — Sprite position setup with animation
- *
- * Sets up a sprite at screen position X,Y and runs its animation.
- * ======================================================================== */
-void mp_0191FE(void) {
-    /* Store position and call sprite setup */
-    uint16_t x = g_cpu.X;
-    uint16_t y = g_cpu.Y;
-
-    /* The actual implementation reads sprite data and sets up
-     * position in the sprite slot. For now dispatch. */
-    func_table_call(0x0191FE);
-}
-
-/* ========================================================================
- * $01:934F — Frame processing helper
- *
- * Called during title screen animation to process a frame.
- * ======================================================================== */
-void mp_01934F(void) {
-    func_table_call(0x01934F);
-}
+/* mp_0191FE and mp_01934F are in mp_misc.c */
 
 /* ========================================================================
  * Register all interaction functions.
