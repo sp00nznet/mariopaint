@@ -218,20 +218,22 @@ void mp_018260(void) {
         mp_018CBF();
         if (g_quit) break;
 
-        /* Check mouse activity */
-        uint16_t mouse_any = bus_wram_read16(0x04C6) |
-                            bus_wram_read16(0x04C8) |
-                            bus_wram_read16(0x04CA);
-        if (mouse_any != 0) {
+        /* Check mouse button activity (not movement — movement resets timer) */
+        uint16_t mouse_buttons = bus_wram_read16(0x04CA);
+        uint16_t mouse_move = bus_wram_read16(0x04C6) | bus_wram_read16(0x04C8);
+        if (mouse_buttons != 0) {
+            /* Button pressed — this should have been caught by 018CBF above,
+             * but in case it wasn't, don't reset the timer */
+        } else if (mouse_move != 0) {
             bus_wram_write16(0x1980, 0x0000);
-            continue;  /* Reset timer, loop */
+            continue;  /* Movement resets timer */
         }
 
-        /* No activity — increment demo timer */
+        /* Increment demo timer */
         uint16_t timer = bus_wram_read16(0x1980) + 1;
         bus_wram_write16(0x1980, timer);
 
-        if (timer >= 0x0180) {  /* Reduced from $0800 for faster testing */
+        if (timer >= 0x00C0) {  /* ~3 seconds for quick testing */
             /* Demo timeout — set up demo playback */
             bus_wram_write16(0x04DC, 0x0080);
             bus_wram_write16(0x04DE, 0x0080);
