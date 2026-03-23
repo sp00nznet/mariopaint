@@ -35,7 +35,7 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 
 ## Status
 
-**Active recompilation** — 135 functions recompiled across 14 source files. The full boot chain runs through title screen, SPC700 audio upload, and into the main game loop with drawing tools, cursor rendering, toolbar/palette interaction, flood fill, undo, and pixel-level canvas manipulation.
+**Active recompilation** — 161 functions recompiled across 16 source files. Complete game flow from boot through title screen to canvas mode with full drawing toolset: pencil, line, rectangle, ellipse, fill, stamp, spray can, undo, palette selection, and pixel-level 4BPP canvas manipulation.
 
 ### What works
 - Full boot chain: reset vector → hardware init → title screen → canvas mode → main loop
@@ -77,7 +77,9 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 | Title Loop/Demo | 12 | `mp_titleloop.c` |
 | Drawing Tools | 16 | `mp_tools.c` |
 | Drawing Core | 9 | `mp_draw.c` |
-| **Total** | **135** | |
+| Miscellaneous | 11 | `mp_misc.c` |
+| Shapes | 15 | `mp_shapes.c` |
+| **Total** | **161** | |
 
 ### What's next
 - Sprite animation engine (`$01962C`, `$01FA68`, `$01F91E`)
