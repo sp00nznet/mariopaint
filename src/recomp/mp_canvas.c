@@ -200,7 +200,7 @@ void mp_01F9BB(void) {
         {
             uint16_t sprite_num = (oam_idx - 1) / 4;
             uint16_t hi_bits = ((x_bit9 | screen_x) >> 8) & 0x03;
-            uint16_t word_ofs = (sprite_num / 4) * 2;
+            uint16_t word_ofs = (sprite_num / 8) * 2;
             uint16_t bit_slot = sprite_num & 0x07;
 
             uint16_t pattern = bus_read16(0x0D, 0xB000 + (hi_bits & 0x03) * 2);

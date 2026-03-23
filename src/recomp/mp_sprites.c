@@ -53,8 +53,8 @@ static void update_upper_oam(uint16_t sprite_idx, uint16_t bits) {
     /* sprite_idx is byte offset into OAM (0, 4, 8, ...) divided by 4 = sprite number
      * But we get the raw X index here. Compute sprite number. */
     uint16_t sprite_num = sprite_idx / 4;  /* 0-127 */
-    uint16_t word_idx = (sprite_num / 4) * 2;  /* byte offset into upper OAM */
-    uint16_t bit_pos = (sprite_num % 4);  /* which 2-bit slot */
+    uint16_t word_idx = (sprite_num / 8) * 2;  /* byte offset into upper OAM */
+    uint16_t bit_pos = (sprite_num & 0x07);  /* which 2-bit slot within word */
 
     /* Read upper OAM bit pattern and mask from ROM tables */
     uint16_t pattern = rom0d_read16(0xB000 + (bits & 0x03) * 2);
@@ -118,7 +118,7 @@ void mp_01F91E(void) {
             uint16_t sprite_num = (oam_idx - 1) / 4;
             uint16_t hi_byte = (oam_x_word >> 8) & 0x03;
 
-            uint16_t word_ofs = (sprite_num / 4) * 2;
+            uint16_t word_ofs = (sprite_num / 8) * 2;
             uint16_t bit_slot = (sprite_num & 0x07);
 
             uint16_t pattern = rom0d_read16(0xB000 + (hi_byte & 0x03) * 2);
@@ -229,7 +229,7 @@ void mp_01FA68(void) {
             uint16_t sprite_num = (oam_idx - 1) / 4;
             uint16_t hi_bits = ((x_bit9 | screen_x) >> 8) & 0x03;
 
-            uint16_t word_ofs = (sprite_num / 4) * 2;
+            uint16_t word_ofs = (sprite_num / 8) * 2;
             uint16_t bit_slot = sprite_num & 0x07;
 
             uint16_t pattern = rom0d_read16(0xB000 + (hi_bits & 0x03) * 2);
