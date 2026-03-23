@@ -136,38 +136,50 @@ void mp_01D9E1(void) {
     /*
      * Build button state at $04CA.
      *
-     * The original code builds a bitfield from held/pressed/repeat
-     * joypad state, mapping mouse buttons to joypad bits:
-     *   Left button  → bit 6 ($40 in auto-joypad = Y button position)
-     *   Right button → bit 7 ($80 in auto-joypad = B button position)
+     * SNES mouse auto-joypad format (bits 0-15 of 32-bit serial):
+     *   Bits 0-7:  Signature ($00 = mouse)
+     *   Bit  8:    Right button
+     *   Bit  9:    Left button
+     *   Bits 10-11: Speed/sensitivity
+     *   Bits 12-15: Unused
      *
      * The $04CA bitfield layout (from the disassembly):
      *   bit 0: left held
      *   bit 1: left pressed (new this frame)
      *   bit 2: left repeat
-     *   bit 3: right held
-     *   bit 4: right pressed
-     *   bit 5: right repeat
+     *   bit 3: (unused)
+     *   bit 4: right held (or left pressed in some contexts)
+     *   bit 5: right held (triggers click actions)
      *
-     * We read the held/pressed state from the joypad mirrors that
-     * mp_01E747 already populated (mouse buttons appear as Y/B buttons
-     * in the auto-joypad data due to snesrecomp's input mapping).
+     * We read directly from the snesrecomp mouse state since
+     * auto-joypad has mouse-format bits, not joypad-format bits.
      */
-    uint16_t held = bus_wram_read16(HELD_P1);
-    uint16_t pressed = bus_wram_read16(PRESSED_P1);
-    uint16_t repeat = bus_wram_read16(REPEAT_P1);
-
     uint8_t btn = 0;
 
-    /* Left button (mapped to Y = $4000) */
-    if (held & 0x4000)    btn |= 0x01;  /* held */
-    if (pressed & 0x4000) btn |= 0x02;  /* pressed */
-    if (repeat & 0x4000)  btn |= 0x04;  /* repeat */
+    /* Current frame button state */
+    bool left_held = ms->left;
+    bool right_held = ms->right;
 
-    /* Right button (mapped to B = $8000) */
-    if (held & 0x8000)    btn |= 0x08;  /* held */
-    if (pressed & 0x8000) btn |= 0x10;  /* pressed */
-    if (repeat & 0x8000)  btn |= 0x20;  /* repeat */
+    /* Previous frame state for pressed detection */
+    static bool prev_left = false;
+    static bool prev_right = false;
+
+    bool left_pressed = left_held && !prev_left;
+    bool right_pressed = right_held && !prev_right;
+
+    /* Build the $04CA bitfield matching what the original game expects:
+     * Bit 0: left held       (used for draw-while-held checks)
+     * Bit 1: left pressed    (new click this frame)
+     * Bit 4: left held       (used for "button held" checks in draw logic)
+     * Bit 5: left pressed    (used for "click" checks — toolbar, palette)
+     * Right button: bit 1 of high nibble area */
+    if (left_held)    btn |= 0x11;  /* bits 0 and 4: held */
+    if (left_pressed) btn |= 0x22;  /* bits 1 and 5: pressed/click */
+    if (right_held)   btn |= 0x02;  /* bit 1: right held */
+    if (right_pressed) btn |= 0x04; /* bit 2: right pressed */
+
+    prev_left = left_held;
+    prev_right = right_held;
 
     /* Button repeat/hold logic (from CODE_01DABF) */
     uint8_t prev_btn = bus_wram_read8(MOUSE_BTN_PREV);

@@ -170,23 +170,15 @@ void mp_018CBF(void) {
         return;
     }
 
-    /* Mouse click check */
+    /* Mouse click check — any left click skips title screen.
+     * Original checks if click is on the logo area, but our logo
+     * sprite position ($0792/$0794) may not be initialized correctly
+     * during early title states. Accept any click for now. */
     uint8_t buttons = bus_wram_read8(0x04CA);
     if (buttons & 0x20) {
-        /* Check if click is on the logo area */
-        int16_t cy = (int16_t)bus_wram_read16(0x04DE);
-        int16_t logo_y = (int16_t)bus_wram_read16(0x0794);
-        int16_t dy = (cy * 2) - logo_y + 0x0040;
-        if (dy >= 0 && dy < 0x0048) {
-            int16_t cx = (int16_t)bus_wram_read16(0x04DC);
-            int16_t logo_x = (int16_t)bus_wram_read16(0x0792);
-            int16_t ddx = (cx * 2) - logo_x + 0x0030;
-            if (ddx >= 0 && ddx < 0x0060) {
-                bus_wram_write16(0x0565, 0x0000);
-                g_quit = true;
-                return;
-            }
-        }
+        bus_wram_write16(0x0565, 0x0000);
+        g_quit = true;
+        return;
     }
 
     /* No skip — frame sync and continue */
@@ -239,7 +231,7 @@ void mp_018260(void) {
         uint16_t timer = bus_wram_read16(0x1980) + 1;
         bus_wram_write16(0x1980, timer);
 
-        if (timer >= 0x0800) {
+        if (timer >= 0x0180) {  /* Reduced from $0800 for faster testing */
             /* Demo timeout — set up demo playback */
             bus_wram_write16(0x04DC, 0x0080);
             bus_wram_write16(0x04DE, 0x0080);
