@@ -724,6 +724,14 @@ void mp_0084D5(void) {
     bus_wram_write16(0x0208, 0x0000);
     bus_wram_write16(0x0206, 0x0001);
 
+    /* Enable BG3 for the bottom toolbar.
+     * mp_00837D sets TM=$13 (BG1+BG2+OBJ) but the canvas needs
+     * BG3 enabled for the toolbar: TM=$17 (BG1+BG2+BG3+OBJ). */
+    bus_write8(0x00, 0x212C, 0x17);
+    bus_wram_write8(0x011A, 0x17);
+    bus_write8(0x00, 0x212E, 0x17);
+    bus_wram_write8(0x011C, 0x17);
+
     printf("Mario Paint recomp: canvas mode ready\n");
     printf("  INIDISP=$%02X BGMODE=$%02X BG12NBA=$%02X BG34NBA=$%02X\n",
         bus_wram_read8(0x0104), bus_wram_read8(0x0108),

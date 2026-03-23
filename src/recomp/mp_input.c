@@ -108,21 +108,20 @@ void mp_01D9E1(void) {
      * Mario Paint reads this and uses bit 7 as sign extend:
      *   if (disp & 0x80) disp |= 0xFF00  (sign extend to 16-bit)
      */
-    int dx = ms->dx;
-    int dy = ms->dy;
+    /*
+     * Use absolute mouse position for accurate cursor tracking.
+     * Compute displacement as the difference from previous SNES position.
+     * This eliminates drift from relative delta rounding errors.
+     */
+    static int prev_snes_x = 128, prev_snes_y = 128;
+    int dx = 0, dy = 0;
 
-    /* Scale SDL window pixels to SNES pixels.
-     * Window = SNES_RENDER_WIDTH(512) * scale(3) / 2 = 768 pixels wide
-     * SNES native = 256 pixels wide → ratio = 768/256 = 3:1.
-     * Divide SDL motion deltas by 3 to get SNES pixel deltas.
-     * Use accumulator to preserve fractional motion for slow moves. */
-    static int accum_dx = 0, accum_dy = 0;
-    accum_dx += dx;
-    accum_dy += dy;
-    dx = accum_dx / 3;
-    dy = accum_dy / 3;
-    accum_dx -= dx * 3;
-    accum_dy -= dy * 3;
+    if (ms->abs_valid) {
+        dx = ms->abs_x - prev_snes_x;
+        dy = ms->abs_y - prev_snes_y;
+        prev_snes_x = ms->abs_x;
+        prev_snes_y = ms->abs_y;
+    }
 
     /* Clamp to -127..+127 */
     if (dx > 127) dx = 127;
@@ -133,12 +132,12 @@ void mp_01D9E1(void) {
     /* Convert to SNES signed-magnitude format */
     uint8_t snes_dx, snes_dy;
     if (dx < 0) {
-        snes_dx = 0x80 | (uint8_t)(-dx);  /* bit 7 = moving left */
+        snes_dx = 0x80 | (uint8_t)(-dx);
     } else {
         snes_dx = (uint8_t)dx;
     }
     if (dy < 0) {
-        snes_dy = 0x80 | (uint8_t)(-dy);  /* bit 7 = moving up */
+        snes_dy = 0x80 | (uint8_t)(-dy);
     } else {
         snes_dy = (uint8_t)dy;
     }
