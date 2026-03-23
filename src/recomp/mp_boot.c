@@ -694,13 +694,23 @@ void mp_0084D5(void) {
         bus_write8(0x00, 0x2100, saved);  /* Restore display */
     }
 
-    /* Reload ALL canvas graphics and tilemaps.
-     * The title screen loaded different tile data. mp_0087EE reloads
-     * everything: palette, font tiles, sprite tiles, BG tiles.
-     * Then rebuild all three tilemaps and queue DMA. */
-    mp_0087EE();   /* Full palette + tile reload */
-    mp_008A16();   /* BG2 tilemap */
-    mp_008A39();   /* BG3 tilemap */
+    /* Ensure tile $1FF (used as the transparent canvas tile on BG1)
+     * is all zeros. The canvas tilemap from ROM references tile $1FF
+     * with pri=0 for the drawing area — this tile must be transparent
+     * so BG2 (the actual canvas pixel data) shows through.
+     * Tile $1FF is at word address $7FF0 in VRAM (BG1 base $6000 + $1FF*$10). */
+    {
+        uint8_t saved = bus_wram_read8(0x0104);
+        bus_write8(0x00, 0x2100, 0x80);  /* Force blank for VRAM access */
+        bus_write8(0x00, 0x2115, 0x80);  /* VMAIN: increment on high */
+        bus_write8(0x00, 0x2116, 0xF0);  /* VMADDL = $F0 */
+        bus_write8(0x00, 0x2117, 0x7F);  /* VMADDH = $7F → word $7FF0 */
+        for (int i = 0; i < 16; i++) {
+            bus_write8(0x00, 0x2118, 0x00);
+            bus_write8(0x00, 0x2119, 0x00);
+        }
+        bus_write8(0x00, 0x2100, saved);
+    }
 
     /* Set up ongoing canvas DMA refresh */
     bus_wram_write16(0x0208, 0x0000);
