@@ -662,17 +662,26 @@ void mp_0084D5(void) {
 
     bus_wram_write16(0x09A1, 0x0140);
 
-    /* Ensure canvas VRAM is refreshed — trigger E460 DMA transfer
-     * of the zeroed canvas buffer ($7E:A000) to VRAM $0000.
-     * Without this, the canvas VRAM may contain garbage from the
-     * title screen. */
-    bus_wram_write16(0x0202, 0x0000);  /* Clear DMA queue busy flag */
-    bus_wram_write16(0x0204, 0x0000);  /* Clear DMA queue write position */
-    bus_wram_write16(0x0208, 0x0000);  /* Clear continuation flag */
-    bus_wram_write16(0x0206, 0x0001);  /* Trigger canvas DMA */
+    /* Ensure canvas VRAM is clean.
+     * The canvas pixel data lives in VRAM $0000-$2FFF (BG2 tile data area).
+     * E460 DMA transfers the canvas buffer ($7E:A000) there each frame,
+     * but it may take several frames to complete. Force-clear VRAM now
+     * so the canvas doesn't show garbage from the title screen. */
+    bus_write8(0x00, 0x2115, 0x80);  /* VMAIN: increment on high byte write */
+    bus_write8(0x00, 0x2116, 0x00);  /* VMADDL = $00 */
+    bus_write8(0x00, 0x2117, 0x00);  /* VMADDH = $00 → VRAM $0000 */
+    for (int i = 0; i < 0x3000; i++) {
+        bus_write8(0x00, 0x2118, 0x00);  /* VMDATAL */
+        bus_write8(0x00, 0x2119, 0x00);  /* VMDATAH */
+    }
 
-    /* Also ensure BG tile data designations are correct for canvas mode.
-     * The title screen sets $04/$44 but canvas needs $06/$66. */
+    /* Set up canvas DMA for ongoing refresh */
+    bus_wram_write16(0x0202, 0x0000);
+    bus_wram_write16(0x0204, 0x0000);
+    bus_wram_write16(0x0208, 0x0000);
+    bus_wram_write16(0x0206, 0x0001);
+
+    /* Ensure BG tile data designations are correct for canvas mode */
     bus_write8(0x00, 0x210B, 0x06);  /* BG12NBA */
     bus_wram_write8(0x010E, 0x06);
     bus_write8(0x00, 0x210C, 0x66);  /* BG34NBA */

@@ -111,6 +111,15 @@ void mp_01D9E1(void) {
     int dx = ms->dx;
     int dy = ms->dy;
 
+    /* Scale SDL window pixels to SNES pixels.
+     * The window is (SNES_RENDER_WIDTH * scale / 2) pixels wide,
+     * and SNES_RENDER_WIDTH is 512 (2x native 256).
+     * With scale=3, window = 768px for 256 SNES pixels = 3:1 ratio.
+     * Divide SDL deltas by ~2 for approximate scaling.
+     * (The original SNES mouse has its own sensitivity settings.) */
+    dx = dx * 2 / 3;
+    dy = dy * 2 / 3;
+
     /* Clamp to -127..+127 */
     if (dx > 127) dx = 127;
     if (dx < -127) dx = -127;
