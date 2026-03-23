@@ -31,6 +31,7 @@ add_library(mp_game STATIC
     src/recomp/mp_tools.c
     src/recomp/mp_draw.c
     src/recomp/mp_misc.c
+    src/recomp/mp_shapes.c
 )
 target_link_libraries(mp_game PUBLIC snesrecomp)
 

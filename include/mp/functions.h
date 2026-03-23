@@ -200,4 +200,22 @@ void mp_01904A(void);  /* Title animation frame */
 void mp_01934F(void);  /* Title frame processing */
 void mp_019372(void);  /* Special mode dispatch */
 
+/* Shapes / Remaining (mp_shapes.c) */
+void mp_register_shapes(void);
+void mp_00AAFB(void);  /* Line drawing */
+void mp_00AB26(void);  /* Rectangle drawing */
+void mp_00AB8A(void);  /* Ellipse drawing */
+void mp_00ADFB(void);  /* Stamp preview */
+void mp_00B0D3(void);  /* Pixel row plot */
+void mp_00B32D(void);  /* Masked draw */
+void mp_00B610(void);  /* Flood fill seed */
+void mp_00B7D6(void);  /* Spray can effect */
+void mp_009C1B(void);  /* Draw completion */
+void mp_009F50(void);  /* Stamp commit */
+void mp_00A0EB(void);  /* Tool init dispatch */
+void mp_0082D5(void);  /* Reset delay */
+void mp_018D35(void);  /* Title logo click */
+void mp_00DF2C(void);  /* Palette entry read */
+void mp_00DFC4(void);  /* Palette entry process */
+
 #endif /* MP_FUNCTIONS_H */
