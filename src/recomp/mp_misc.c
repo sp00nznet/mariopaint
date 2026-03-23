@@ -236,8 +236,8 @@ clear_and_restore:
 set_and_restore:
 special_restore:
 song_restore:
-    /* Various tool-specific cleanup — dispatch */
-    func_table_call(0x009760);  /* Re-dispatch for complex cases */
+    /* Various tool-specific cleanup — not yet fully recompiled */
+    return;
 }
 
 /* ========================================================================
@@ -395,7 +395,7 @@ void mp_01934F(void) {
 void mp_019372(void) {
     /* Dispatches to a special game mode after title screen.
      * Used when $0565 != 0 (P2 combo detected). */
-    func_table_call(0x019372);
+    /* Special mode not yet recompiled — return to normal flow */
 }
 
 /* ========================================================================

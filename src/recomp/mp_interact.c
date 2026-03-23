@@ -266,7 +266,7 @@ void mp_01833F(void) {
 }
 
 /* State 2+: Complex animation — dispatch via func_table_call */
-void mp_01834B(void) { func_table_call(0x01834B); }
+void mp_01834B(void) { /* Title state 2+: complex animation — not yet recompiled */ }
 
 /* mp_0191FE and mp_01934F are in mp_misc.c */
 
