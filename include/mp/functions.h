@@ -144,4 +144,16 @@ void mp_008BEB(void);  /* Canvas click handler */
 void mp_008B40(void);  /* Wrapper: click handler */
 void mp_008B44(void);  /* Wrapper: cursor render */
 
+/* Canvas Interaction (mp_interact.c) */
+void mp_register_interact(void);
+void mp_009001(void);  /* Tool state update */
+void mp_0091C7(void);  /* Cursor zone check */
+void mp_009564(void);  /* Drawing tool end dispatch */
+void mp_009598(void);  /* Toolbar click handler */
+void mp_0095E7(void);  /* Palette click handler */
+void mp_008D2C(void);  /* Toolbar zone hit test */
+void mp_008E0B(void);  /* Palette bar hit test */
+void mp_018328(void);  /* Title state 0: init */
+void mp_01833F(void);  /* Title state 1: animate */
+
 #endif /* MP_FUNCTIONS_H */

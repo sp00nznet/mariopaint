@@ -844,4 +844,7 @@ void mp_register_all(void) {
 
     /* Title loop / Bank 0F / click handler */
     mp_register_titleloop();
+
+    /* Canvas interaction */
+    mp_register_interact();
 }
