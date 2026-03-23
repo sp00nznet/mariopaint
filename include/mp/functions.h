@@ -86,6 +86,25 @@ void mp_00823C(void);  /* Display animation */
 void mp_008B48(void);  /* Cursor movement */
 void mp_01DCB9(void);  /* Bomb timer animation */
 
+/* Audio Engine (mp_audio.c) */
+void mp_register_audio(void);
+void mp_01DF25(void);  /* SPC700 upload */
+void mp_01D308(void);  /* Audio cmd queue ch0 */
+void mp_01D328(void);  /* Audio cmd queue ch1 */
+void mp_01D348(void);  /* Audio cmd queue ch2 */
+void mp_01D368(void);  /* Audio cmd queue ch3 */
+void mp_01D2BF(void);  /* Audio cmd special */
+void mp_01D388(void);  /* Audio init */
+void mp_01DDB8(void);  /* NMI audio: queue drain */
+void mp_01DDE1(void);  /* NMI audio: ch0 process */
+void mp_01DE2D(void);  /* NMI audio: ch1-3 process */
+void mp_01DFD3(void);  /* Sprite size mirrors */
+
+/* Title Screen (mp_title.c) */
+void mp_register_title(void);
+void mp_00D6D3(void);  /* SRAM checksum */
+void mp_018000(void);  /* Title screen + canvas init */
+
 /* Canvas / UI (mp_canvas.c) */
 void mp_register_canvas(void);
 void mp_00C414(void);  /* Standard canvas tilemap */

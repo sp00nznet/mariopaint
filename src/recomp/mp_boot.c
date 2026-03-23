@@ -832,4 +832,10 @@ void mp_register_all(void) {
 
     /* Canvas / UI */
     mp_register_canvas();
+
+    /* Audio engine */
+    mp_register_audio();
+
+    /* Title screen */
+    mp_register_title();
 }
