@@ -35,36 +35,46 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 
 ## Status
 
-**Active recompilation** — 55 functions recompiled across the boot chain, DMA/PPU engine, input system, game logic, and graphics loading. The full boot chain runs, the NMI handler processes DMA transfers, and the frame loop is driven by the game's own frame sync routine.
+**Active recompilation** — 89 functions recompiled across 10 source files. The full boot chain runs through title screen, palette/tile loading, audio upload, and into the main game loop with cursor rendering and input processing.
 
 ### What works
-- Full boot chain: reset vector → hardware init → app init → main loop
+- Full boot chain: reset vector → hardware init → title screen → canvas mode → main loop
+- Title screen: palette/tile DMA, sprite animation, fade in/out, input wait
+- SPC700 audio: IPL upload protocol, 4-channel command queues, per-frame NMI processing
 - NMI handler with OAM/VRAM/palette DMA transfers
-- PPU register mirror writeback (all display registers)
-- BG1-BG4 scroll register updates
+- PPU register mirror writeback (all display registers) + BG1-4 scroll
 - HDMA setup (3 channels: windows, BG2 vertical/horizontal scroll)
 - Frame sync driven by the game's own `$01E2CE` routine
 - SNES Mouse input via snesrecomp API (displacement + buttons)
 - Cursor movement with screen bounds clamping
 - Cursor sprite rendering (reads frame data from ROM, animated cursors)
+- Sprite animation engine (multi-sprite objects, flip, palette override)
 - Game logic dispatch with toolbar show/hide timer
 - Post-logic state machine (31-entry jump table)
 - Full palette loading from ROM to CGRAM (all 256 colors)
-- Tile/sprite graphics DMA from ROM to VRAM (6 transfers: font, UI, BG3, sprites)
+- Tile/sprite graphics DMA from ROM to VRAM (6+ transfers)
 - Tilemap generation and DMA queuing for BG1/BG2/BG3
-- Fade-in brightness ramp effect
-- Bomb icon and display icon animations
-- Button repeat logic for mouse and joypad
+- Canvas tilemap builders (standard + alternate pages)
+- Fade-in/fade-out brightness effects
+- Tool mode transitions (bomb icon animation)
+- Pen graphics loading from ROM + SRAM
+- SRAM checksum validation
+- Palette row and display state initialization
 
 ### Recompilation progress
-| Area | Functions | Status |
-|------|-----------|--------|
-| Boot/System | 9 | Reset vector, HW init, register/graphics setup, NMI handler, main loop |
-| DMA/PPU Engine | 22 | OAM/VRAM/palette DMA, PPU writeback, HDMA, frame sync, joypad read |
-| Input/Cursor | 7 | Mouse read, cursor movement, sprite animations |
-| Game Logic | 5 | Toolbar timer, state dispatch, cursor rendering |
-| Graphics Init | 12 | Palette load, tile DMA, tilemap generation, border fill |
-| **Total** | **55** | |
+| Area | Functions | Source File |
+|------|-----------|-------------|
+| Boot/System | 9 | `mp_boot.c` |
+| DMA/PPU Engine | 22 | `mp_bank01.c` |
+| Input/Cursor | 7 | `mp_input.c` |
+| Game Logic | 5 | `mp_gamelogic.c` |
+| Graphics Init | 12 | `mp_gfxinit.c` |
+| Sprite Engine | 3 | `mp_sprites.c` |
+| Canvas/UI | 5 | `mp_canvas.c` |
+| Audio Engine | 11 | `mp_audio.c` |
+| Title Screen | 2 | `mp_title.c` |
+| Boot Helpers | 13 | `mp_helpers.c` |
+| **Total** | **89** | |
 
 ### What's next
 - Sprite animation engine (`$01962C`, `$01FA68`, `$01F91E`)
