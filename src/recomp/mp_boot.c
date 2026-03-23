@@ -694,13 +694,30 @@ void mp_0084D5(void) {
         bus_write8(0x00, 0x2100, saved);  /* Restore display */
     }
 
+    /* Rebuild BG1 tilemap for canvas mode.
+     * mp_018F52 (title transition) filled BG1 tilemap with $24E0.
+     * Need to restore the canvas tilemap with proper border tiles
+     * and canvas area, then DMA it to VRAM $3000. */
+    mp_0089C3();   /* Border tiles */
+    mp_0089B1();   /* Canvas tilemap from ROM */
+    mp_01DE97();   /* Queue BG1 tilemap DMA */
+    mp_008A16();   /* BG2 tilemap (includes DMA queue) */
+    mp_008A39();   /* BG3 tilemap (includes DMA queue) */
+
     /* Set up ongoing canvas DMA refresh */
-    bus_wram_write16(0x0202, 0x0000);
-    bus_wram_write16(0x0204, 0x0000);
     bus_wram_write16(0x0208, 0x0000);
     bus_wram_write16(0x0206, 0x0001);
 
     printf("Mario Paint recomp: canvas mode ready\n");
+    printf("  INIDISP=$%02X BGMODE=$%02X BG12NBA=$%02X BG34NBA=$%02X\n",
+        bus_wram_read8(0x0104), bus_wram_read8(0x0108),
+        bus_wram_read8(0x010E), bus_wram_read8(0x010F));
+    printf("  BG1SC=$%02X BG2SC=$%02X BG3SC=$%02X TM=$%02X\n",
+        bus_wram_read8(0x010A), bus_wram_read8(0x010B),
+        bus_wram_read8(0x010C), bus_wram_read8(0x011A));
+
+    /* Dump PPU state for debugging */
+    snesrecomp_dump_ppu("ppudump.txt");
 
     /* Fall through to main loop */
     mp_00865A();
