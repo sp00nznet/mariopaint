@@ -545,8 +545,16 @@ void mp_0084D5(void) {
     bus_wram_write16(0x19B2, 0x001C);
     bus_wram_write16(0x19B4, 0x00C4);
 
-    /* JSL CODE_018000 — major subsystem init (title screen) */
+    /* JSL CODE_018000 — title screen + canvas transition */
     func_table_call(0x018000);
+
+    /* mp_018000 sets BG12NBA=$04 / BG34NBA=$44 (title screen values).
+     * Reset to canvas values immediately so the NMI handler doesn't
+     * write the wrong tile base addresses to the PPU. */
+    bus_write8(0x00, 0x210B, 0x06);
+    bus_wram_write8(0x010E, 0x06);
+    bus_write8(0x00, 0x210C, 0x66);
+    bus_wram_write8(0x010F, 0x66);
 
     /* JSR CODE_00E25C — additional canvas setup */
     func_table_call(0x00E25C);
