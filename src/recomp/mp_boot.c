@@ -694,22 +694,13 @@ void mp_0084D5(void) {
         bus_write8(0x00, 0x2100, saved);  /* Restore display */
     }
 
-    /* Rebuild BG1 tilemap for canvas mode.
-     * mp_018F52 (title transition) filled BG1 tilemap with $24E0.
-     * Clear the entire BG1 buffer first, then rebuild properly. */
-    {
-        uint8_t *wram = bus_get_wram();
-        /* Clear BG1 tilemap buffer ($7E:2000, $800 bytes) with tile $0000 */
-        for (int i = 0; i < 0x800; i += 2) {
-            wram[0x2000 + i] = 0x00;
-            wram[0x2000 + i + 1] = 0x00;
-        }
-    }
-    mp_0089C3();   /* Border tiles */
-    mp_0089B1();   /* Canvas tilemap from ROM */
-    mp_01DE97();   /* Queue BG1 tilemap DMA */
-    mp_008A16();   /* BG2 tilemap (includes DMA queue) */
-    mp_008A39();   /* BG3 tilemap (includes DMA queue) */
+    /* Reload ALL canvas graphics and tilemaps.
+     * The title screen loaded different tile data. mp_0087EE reloads
+     * everything: palette, font tiles, sprite tiles, BG tiles.
+     * Then rebuild all three tilemaps and queue DMA. */
+    mp_0087EE();   /* Full palette + tile reload */
+    mp_008A16();   /* BG2 tilemap */
+    mp_008A39();   /* BG3 tilemap */
 
     /* Set up ongoing canvas DMA refresh */
     bus_wram_write16(0x0208, 0x0000);
