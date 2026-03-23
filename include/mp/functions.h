@@ -129,4 +129,19 @@ void mp_019DFE(void);  /* Sprite slot init */
 void mp_01CDE1(void);  /* Multi-frame DMA batch loader */
 void mp_01F9BB(void);  /* Sprite renderer with culling */
 
+/* Title Loop / Bank 0F / Click Handler (mp_titleloop.c) */
+void mp_register_titleloop(void);
+void mp_018260(void);  /* Title screen animation loop */
+void mp_0182B1(void);  /* Title cursor position update */
+void mp_0182F6(void);  /* Title cursor sprite draw */
+void mp_018308(void);  /* Title state machine */
+void mp_018C43(void);  /* Title sprite setup */
+void mp_018CB7(void);  /* Title sprite animate */
+void mp_018CBF(void);  /* Title input check */
+void mp_0FC000(void);  /* Bank 0F: demo dispatch */
+void mp_0FC00E(void);  /* Bank 0F: start demo */
+void mp_008BEB(void);  /* Canvas click handler */
+void mp_008B40(void);  /* Wrapper: click handler */
+void mp_008B44(void);  /* Wrapper: cursor render */
+
 #endif /* MP_FUNCTIONS_H */

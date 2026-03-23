@@ -841,4 +841,7 @@ void mp_register_all(void) {
 
     /* Misc helpers */
     mp_register_helpers();
+
+    /* Title loop / Bank 0F / click handler */
+    mp_register_titleloop();
 }
