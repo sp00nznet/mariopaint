@@ -21,6 +21,8 @@ This project takes the original 65816 machine code from Mario Paint and converts
  ╚══════════════════════════════════════════════════════╝
 ```
 
+![Mario Paint Title Screen](title2.png)
+
 ## Why Mario Paint?
 
 Because it's a weird, wonderful game that nobody expected to be recompiled:
