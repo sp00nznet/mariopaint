@@ -190,7 +190,9 @@ void mp_008013(void) {
     bus_wram_write8(0xCE, 0x18);  /* bank $18 */
 
     /* JSL CODE_01DF25 — upload SPC700 audio engine */
+    printf("mp_008013: uploading SPC700...\n");
     func_table_call(0x01DF25);
+    printf("mp_008013: SPC700 upload done, init audio\n");
 
     /* LDA #$02; JSL CODE_01D308 — init audio state */
     op_lda_imm8(0x02);
@@ -506,6 +508,7 @@ void mp_0084D5(void) {
     }
 
     /* Clear $0206 and call initial graphics setup */
+    printf("mp_0084D5: clearing canvas, calling 008A75\n");
     bus_wram_write16(0x0206, 0x0000);
     func_table_call(0x008A75);
 
@@ -513,11 +516,20 @@ void mp_0084D5(void) {
     bus_wram_write16(0x0206, bus_wram_read16(0x0206) + 1);
 
     /* Wait loop: call CODE_01E2CE until $0208 is nonzero */
-    do {
-        func_table_call(0x01E2CE);
-        if (g_quit) return;
-    } while (bus_wram_read16(0x0208) == 0);
+    {
+        int wait_count = 0;
+        do {
+            func_table_call(0x01E2CE);
+            if (g_quit) return;
+            wait_count++;
+            if (wait_count > 30) {
+                bus_wram_write16(0x0208, 0x0001);
+                break;
+            }
+        } while (bus_wram_read16(0x0208) == 0);
+    }
 
+    printf("mp_0084D5: past $0208 wait, continuing init\n");
     /* Set up animation parameters */
     bus_wram_write16(0x0448, 0x0100);
 
@@ -537,7 +549,8 @@ void mp_0084D5(void) {
     bus_wram_write16(0x19B2, 0x001C);
     bus_wram_write16(0x19B4, 0x00C4);
 
-    /* JSL CODE_018000 — major subsystem init */
+    /* JSL CODE_018000 — major subsystem init (title screen) */
+    printf("mp_0084D5: calling 018000 (title screen)\n");
     func_table_call(0x018000);
 
     /* JSR CODE_00E25C — additional canvas setup */

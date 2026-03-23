@@ -247,13 +247,20 @@ void mp_01D388(void) {
     CPU_SET_A8(0x00);
     mp_01D2BF();
 
-    /* Wait for $053A to clear */
-    while (bus_wram_read8(0x053A) != 0 && !g_quit) {
-        /* $053A is decremented by the NMI audio processing */
+    /* Wait for $053A to clear (with timeout).
+     * $053A is decremented by the NMI DDE1 audio handler.
+     * If the audio command doesn't get acknowledged quickly,
+     * force-clear to avoid blocking the boot chain. */
+    int timeout = 10;
+    while (bus_wram_read8(0x053A) != 0 && !g_quit && timeout > 0) {
         mp_01E2CE();
+        timeout--;
+    }
+    if (timeout == 0) {
+        bus_wram_write8(0x053A, 0x00);
     }
 
-    /* Wait 18 frames */
+    /* Wait 18 frames for audio engine to settle */
     for (int i = 0x12; i > 0 && !g_quit; i--) {
         mp_01E2CE();
     }
