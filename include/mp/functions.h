@@ -162,6 +162,18 @@ void mp_00A363(void);  /* Tool palette display update */
 void mp_00F921(void);  /* Palette row multiplier */
 void mp_01D56D(void);  /* Pen tile DMA */
 
+/* Drawing Core (mp_draw.c) */
+void mp_register_draw(void);
+void mp_00AAEF(void);  /* Pixel plot entry */
+void mp_00B051(void);  /* Core pixel plotting */
+void mp_009D7D(void);  /* Draw stroke sound */
+void mp_00B305(void);  /* Canvas tile offset compute */
+void mp_00B3FF(void);  /* Flood fill */
+void mp_00A22D(void);  /* Toolbar tilemap load */
+void mp_00A25B(void);  /* Tool graphics load */
+void mp_0082B8(void);  /* Soft reset */
+void mp_008B3C(void);  /* Cursor movement wrapper */
+
 /* Canvas Interaction (mp_interact.c) */
 void mp_register_interact(void);
 void mp_009001(void);  /* Tool state update */

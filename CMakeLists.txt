@@ -29,6 +29,7 @@ add_library(mp_game STATIC
     src/recomp/mp_titleloop.c
     src/recomp/mp_interact.c
     src/recomp/mp_tools.c
+    src/recomp/mp_draw.c
 )
 target_link_libraries(mp_game PUBLIC snesrecomp)
 

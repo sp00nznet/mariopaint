@@ -850,4 +850,7 @@ void mp_register_all(void) {
 
     /* Drawing tools */
     mp_register_tools();
+
+    /* Drawing core */
+    mp_register_draw();
 }
