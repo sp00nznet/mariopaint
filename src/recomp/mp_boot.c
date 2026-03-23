@@ -696,8 +696,15 @@ void mp_0084D5(void) {
 
     /* Rebuild BG1 tilemap for canvas mode.
      * mp_018F52 (title transition) filled BG1 tilemap with $24E0.
-     * Need to restore the canvas tilemap with proper border tiles
-     * and canvas area, then DMA it to VRAM $3000. */
+     * Clear the entire BG1 buffer first, then rebuild properly. */
+    {
+        uint8_t *wram = bus_get_wram();
+        /* Clear BG1 tilemap buffer ($7E:2000, $800 bytes) with tile $0000 */
+        for (int i = 0; i < 0x800; i += 2) {
+            wram[0x2000 + i] = 0x00;
+            wram[0x2000 + i + 1] = 0x00;
+        }
+    }
     mp_0089C3();   /* Border tiles */
     mp_0089B1();   /* Canvas tilemap from ROM */
     mp_01DE97();   /* Queue BG1 tilemap DMA */
