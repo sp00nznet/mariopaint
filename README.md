@@ -37,31 +37,28 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 
 ## Status
 
-**Active recompilation** — 161 functions recompiled across 16 source files. Complete game flow from boot through title screen to canvas mode with full drawing toolset: pencil, line, rectangle, ellipse, fill, stamp, spray can, undo, palette selection, and pixel-level 4BPP canvas manipulation.
+**Active recompilation** — 161 functions recompiled across 16 source files. The game boots, plays audio, renders the title screen, and transitions to a working canvas with palette bar, cursor, and drawing tools.
+
+![Title Screen](title2.png)
+![Clean Canvas](cleancanvas.png)
 
 ### What works
-- Full boot chain: reset vector → hardware init → title screen → canvas mode → main loop
-- Title screen: palette/tile DMA, sprite animation, fade in/out, input wait
-- SPC700 audio: IPL upload protocol, 4-channel command queues, per-frame NMI processing
-- NMI handler with OAM/VRAM/palette DMA transfers
-- PPU register mirror writeback (all display registers) + BG1-4 scroll
-- HDMA setup (3 channels: windows, BG2 vertical/horizontal scroll)
-- Frame sync driven by the game's own `$01E2CE` routine
-- SNES Mouse input via snesrecomp API (displacement + buttons)
-- Cursor movement with screen bounds clamping
-- Cursor sprite rendering (reads frame data from ROM, animated cursors)
-- Sprite animation engine (multi-sprite objects, flip, palette override)
-- Game logic dispatch with toolbar show/hide timer
-- Post-logic state machine (31-entry jump table)
-- Full palette loading from ROM to CGRAM (all 256 colors)
-- Tile/sprite graphics DMA from ROM to VRAM (6+ transfers)
-- Tilemap generation and DMA queuing for BG1/BG2/BG3
-- Canvas tilemap builders (standard + alternate pages)
-- Fade-in/fade-out brightness effects
-- Tool mode transitions (bomb icon animation)
-- Pen graphics loading from ROM + SRAM
-- SRAM checksum validation
-- Palette row and display state initialization
+- **Full game flow**: boot → SPC700 audio upload → title screen → click → canvas mode
+- **Title screen**: "MARIOPAINT" with all sprites, cursor, "(c) 1992 Nintendo"
+- **Canvas mode**: clean white canvas with color palette bar, border frame, tool cursor
+- **SPC700 audio**: direct RAM upload, 4-channel command queues — music plays!
+- **Mouse input**: SNES Mouse mapped from SDL2, cursor tracks mouse movement
+- **PPU rendering**: all 4 BG layers, sprites, palette, DMA transfers working
+- **Drawing tools**: pencil, line, rectangle, ellipse, fill, stamp, spray can, undo
+- NMI handler with OAM/VRAM/palette DMA, PPU register mirror writeback
+- HDMA (3 channels), frame sync, fade in/out, sprite animation engine
+- Tilemap generation, canvas DMA refresh, tool/palette selection
+
+### Known issues
+- Bottom toolbar (BG3) partially rendering — tool icons need more tilemap work
+- Mouse sensitivity needs tuning (currently raw SDL deltas / 2)
+- Drawing doesn't produce visible pixels yet ($00B25E/$00B23C pen mask/apply not implemented)
+- Title screen animation states 2-11 not recompiled (title shows static text only)
 
 ### Recompilation progress
 | Area | Functions | Source File |
@@ -80,8 +77,8 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 | Drawing Tools | 16 | `mp_tools.c` |
 | Drawing Core | 9 | `mp_draw.c` |
 | Miscellaneous | 11 | `mp_misc.c` |
-| Shapes | 15 | `mp_shapes.c` |
-| **Total** | **161** | |
+| Shapes/Remaining | 15 | `mp_shapes.c` |
+| **Total** | **161** | **~10,000 lines of C** |
 
 ### What's next
 - Sprite animation engine (`$01962C`, `$01FA68`, `$01F91E`)
