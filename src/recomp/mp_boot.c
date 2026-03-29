@@ -752,6 +752,50 @@ void mp_0084D5(void) {
         bus_write8(0x00, 0x2100, saved);
     }
 
+    /* Zero BG1 tile $1FF for 4bpp at $6FF8 (used for transparent BG1 rows).
+     * Also zero BG3 2bpp tiles $00AE and $1FC so non-icon toolbar
+     * positions and frame tiles render as transparent. */
+    {
+        uint8_t saved = bus_wram_read8(0x0104);
+        bus_write8(0x00, 0x2100, 0x80);
+        bus_write8(0x00, 0x2115, 0x80);
+
+        /* BG1 4bpp tile $1FF at $6000 + $1FF*16 = $7FF0: already zeroed above.
+         * BG3 2bpp tile $00AE at $6000 + $AE*8 = $6570: zero 8 words */
+        bus_write8(0x00, 0x2116, 0x70);
+        bus_write8(0x00, 0x2117, 0x65);
+        for (int i = 0; i < 8; i++) {
+            bus_write8(0x00, 0x2118, 0x00);
+            bus_write8(0x00, 0x2119, 0x00);
+        }
+
+        /* BG3 2bpp tile $1FC at $6000 + $1FC*8 = $6FE0: zero 8 words */
+        bus_write8(0x00, 0x2116, 0xE0);
+        bus_write8(0x00, 0x2117, 0x6F);
+        for (int i = 0; i < 8; i++) {
+            bus_write8(0x00, 0x2118, 0x00);
+            bus_write8(0x00, 0x2119, 0x00);
+        }
+
+        /* BG3 2bpp tile $1FE (canvas hole) at $6000 + $1FE*8 = $6FF0 */
+        bus_write8(0x00, 0x2116, 0xF0);
+        bus_write8(0x00, 0x2117, 0x6F);
+        for (int i = 0; i < 8; i++) {
+            bus_write8(0x00, 0x2118, 0x00);
+            bus_write8(0x00, 0x2119, 0x00);
+        }
+
+        /* BG1 4bpp tile $1FF at $6FF8 (BG3 2bpp addressing) */
+        bus_write8(0x00, 0x2116, 0xF8);
+        bus_write8(0x00, 0x2117, 0x6F);
+        for (int i = 0; i < 8; i++) {
+            bus_write8(0x00, 0x2118, 0x00);
+            bus_write8(0x00, 0x2119, 0x00);
+        }
+
+        bus_write8(0x00, 0x2100, saved);
+    }
+
     /* Set up ongoing canvas DMA refresh */
     bus_wram_write16(0x0208, 0x0000);
     bus_wram_write16(0x0206, 0x0001);

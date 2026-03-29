@@ -217,44 +217,12 @@ void mp_0089C3(void) {
     uint8_t *wram = bus_get_wram();
 
     /* Top border: fill $2000-$203E with $21EE */
-    /* BG1 rows 0-4: use original palette 1 tiles ($21xx).
-     * These render dark but have transparent (color 0) pixels that
-     * let BG3 palette icons show through. */
-    for (int x = 0x3E; x >= 0; x -= 2) {
-        wram[0x2000 + x]     = 0xEE;
-        wram[0x2000 + x + 1] = 0x21;
-    }
-    {
-        uint16_t val = 0x210F;
-        for (int x = 0x1E; x >= 0; x -= 2) {
-            wram[0x2040 + x]     = (uint8_t)(val & 0xFF);
-            wram[0x2040 + x + 1] = (uint8_t)(val >> 8);
-            val--;
-        }
-    }
-    {
-        uint16_t val = 0x211F;
-        for (int x = 0x1E; x >= 0; x -= 2) {
-            wram[0x2080 + x]     = (uint8_t)(val & 0xFF);
-            wram[0x2080 + x + 1] = (uint8_t)(val >> 8);
-            val--;
-        }
-    }
-    {
-        uint16_t val = 0x212F;
-        for (int x = 0x1E; x >= 0; x -= 2) {
-            wram[0x2060 + x]     = (uint8_t)(val & 0xFF);
-            wram[0x2060 + x + 1] = (uint8_t)(val >> 8);
-            val--;
-        }
-    }
-    {
-        uint16_t val = 0x213F;
-        for (int x = 0x1E; x >= 0; x -= 2) {
-            wram[0x20A0 + x]     = (uint8_t)(val & 0xFF);
-            wram[0x20A0 + x + 1] = (uint8_t)(val >> 8);
-            val--;
-        }
+    /* BG1 rows 0-4: transparent tile $01FF (zeroed in VRAM).
+     * BG3 palette icons show through at their positions.
+     * BG3 non-icon positions use tile $00AE which we also zero. */
+    for (int x = 0; x < 5 * 64; x += 2) {
+        wram[0x2000 + x]     = 0xFF;
+        wram[0x2000 + x + 1] = 0x01;
     }
 }
 
