@@ -323,13 +323,26 @@ void mp_01962C(void) {
         uint8_t cmd = bus_read8(0x0F, anim_ptr + frame_ofs);
 
         if (cmd & 0x80) {
-            /* Command byte — handle animation commands */
-            /* $80+ = usually loop or end command */
-            /* For simplicity, use the E393 dispatch pattern */
-            uint16_t cmd_val = cmd & 0x7F;
-            func_table_call(0x01E393);  /* Indexed dispatch */
-
-            /* Re-read after dispatch may have changed state */
+            /* Command byte — animation control.
+             * The original uses $01E393 (indexed JSL dispatch) which
+             * can't work in recompiled C. Handle commands directly:
+             *   $80 = loop (reset frame to 0)
+             *   $81 = end (hold last frame)
+             *   $82+ = other (treat as end) */
+            uint8_t cmd_type = cmd & 0x7F;
+            if (cmd_type == 0) {
+                /* Loop: reset frame index to 0 */
+                bus_wram_write8(0x0797 + slot_ofs, 0x00);
+                frame_ofs = 0;
+                cmd = bus_read8(0x0F, anim_ptr);
+                bus_wram_write8(0x0796 + slot_ofs, cmd);
+            } else {
+                /* End / other: rewind one frame and hold */
+                uint8_t fi = bus_wram_read8(0x0797 + slot_ofs);
+                if (fi > 0) fi--;
+                bus_wram_write8(0x0797 + slot_ofs, fi);
+                bus_wram_write8(0x0796 + slot_ofs, 1);
+            }
             delay = bus_wram_read8(0x0796 + slot_ofs);
         } else {
             /* Normal frame: set delay */
