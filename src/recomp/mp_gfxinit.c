@@ -217,12 +217,13 @@ void mp_0089C3(void) {
     uint8_t *wram = bus_get_wram();
 
     /* Top border: fill $2000-$203E with $21EE */
+    /* BG1 rows 0-4: use original palette 1 tiles ($21xx).
+     * These render dark but have transparent (color 0) pixels that
+     * let BG3 palette icons show through. */
     for (int x = 0x3E; x >= 0; x -= 2) {
         wram[0x2000 + x]     = 0xEE;
         wram[0x2000 + x + 1] = 0x21;
     }
-
-    /* Left column descending: $2040+x = $210F, $210E, ... */
     {
         uint16_t val = 0x210F;
         for (int x = 0x1E; x >= 0; x -= 2) {
@@ -231,8 +232,6 @@ void mp_0089C3(void) {
             val--;
         }
     }
-
-    /* Second column: $2080+x = $211F, $211E, ... */
     {
         uint16_t val = 0x211F;
         for (int x = 0x1E; x >= 0; x -= 2) {
@@ -241,8 +240,6 @@ void mp_0089C3(void) {
             val--;
         }
     }
-
-    /* Right column: $2060+x = $212F, $212E, ... */
     {
         uint16_t val = 0x212F;
         for (int x = 0x1E; x >= 0; x -= 2) {
@@ -251,8 +248,6 @@ void mp_0089C3(void) {
             val--;
         }
     }
-
-    /* Fourth column: $20A0+x = $213F, $213E, ... */
     {
         uint16_t val = 0x213F;
         for (int x = 0x1E; x >= 0; x -= 2) {
@@ -292,7 +287,10 @@ void mp_008A16(void) {
  * Sets BG3 scroll to (4, 4) and queues DMA.
  * ======================================================================== */
 void mp_008A39(void) {
-    /* Fill entire BG3 buffer with $2FFC */
+    /* Fill entire BG3 buffer with $2FFC (tile $1FC, palette 2, priority 0).
+     * Priority 0 puts BG3 behind BG1 in Mode 1. The BG1 border tiles
+     * (rows 0-2) contain the toolbar artwork and render on top.
+     * BG3 only shows where BG1/BG2 are transparent (bottom bar area). */
     op_lda_imm16(0x2FFC);
     mp_01E042();
 
@@ -398,6 +396,10 @@ void mp_01DE_queue_dma(const uint8_t *record, int len) {
     uint16_t new_pos = bus_wram_read16(0x0204) + 9;
     bus_wram_write16(0x0204, new_pos);
 
+    /* Write $00 terminator after the last record so the queue
+     * reader doesn't process stale records left in memory. */
+    bus_wram_write8(0x0182 + new_pos, 0x00);
+
     /* Check if we should transfer immediately or queue for NMI */
     uint8_t inidisp = bus_wram_read8(0x0104);
     if (inidisp & 0x80) {
@@ -427,6 +429,75 @@ void mp_01E6D0(void) {
 }
 
 /* ========================================================================
+ * $01:A30D — Write toolbar icon tiles into BG3 tilemap
+ *
+ * Reads $0012 (icon count, masked to 0-15) and writes 2x2 tile
+ * entries for each tool icon into the BG3 tilemap buffer at $7E:3082.
+ * Icons are 16x16 pixels (4 tiles each), laid out left-to-right
+ * with 10 icons per row.
+ *
+ * Tile numbers start at $2E20 and increment by 4 per icon.
+ * ======================================================================== */
+void mp_01A30D(void) {
+    uint8_t *wram = bus_get_wram();
+
+    /* Clear the toolbar icon area in BG3 tilemap with blank tile $00AE */
+    int x = 0x0154;
+    while (x >= 0) {
+        wram[0x3082 + x]     = 0xAE;
+        wram[0x3082 + x + 1] = 0x00;
+        x -= 2;
+        /* Skip to start of previous row when at row boundary */
+        if ((x & 0x3F) == 0) {
+            x -= 0x2C;
+        }
+    }
+
+    /* Read number of icons to draw */
+    uint16_t num_icons = bus_wram_read16(0x0012) & 0x000F;
+    if (num_icons == 0) return;
+
+    /* Write 2x2 tile entries for each icon.
+     * Toolbar tile graphics are at VRAM $7400. With BG34NBA=$66 (base $6000),
+     * tile $280 maps to $6000 + $280*8 = $7400. Use priority 1 so BG3
+     * renders on top of BG1/BG2 in Mode 1. Palette 2 for toolbar colors. */
+    uint16_t tile = 0x8C80;  /* priority 1, palette 0, H-flip, V-flip, tile $280 */
+    int ofs = 0;
+
+    for (uint16_t i = 0; i < num_icons; i++) {
+        /* Top-left */
+        wram[0x3084 + ofs]     = (uint8_t)(tile & 0xFF);
+        wram[0x3084 + ofs + 1] = (uint8_t)(tile >> 8);
+        /* Top-right */
+        uint16_t tile_tr = tile + 2;
+        wram[0x3086 + ofs]     = (uint8_t)(tile_tr & 0xFF);
+        wram[0x3086 + ofs + 1] = (uint8_t)(tile_tr >> 8);
+        /* Bottom-left (next tilemap row = +$40 bytes, tile +$1E) */
+        uint16_t tile_bl = tile + 0x20;
+        wram[0x30C4 + ofs]     = (uint8_t)(tile_bl & 0xFF);
+        wram[0x30C4 + ofs + 1] = (uint8_t)(tile_bl >> 8);
+        /* Bottom-right */
+        uint16_t tile_br = tile_bl + 2;
+        wram[0x30C6 + ofs]     = (uint8_t)(tile_br & 0xFF);
+        wram[0x30C6 + ofs + 1] = (uint8_t)(tile_br >> 8);
+
+        ofs += 4;
+
+        /* Wrap to next row pair after 15 icons (15 * 4 = 0x3C bytes).
+         * This puts all 15 palette colors in one horizontal row. */
+        if ((ofs & 0x3F) == 0x3C) {
+            ofs += 0x44;  /* Skip to next pair of tilemap rows */
+        }
+
+        /* Advance to next icon's tiles (+4, skip row boundary) */
+        tile += 4;
+        if ((tile & 0x001F) == 0) {
+            tile += 0x0020;  /* Skip to next tile row in VRAM */
+        }
+    }
+}
+
+/* ========================================================================
  * Register all graphics init functions.
  * ======================================================================== */
 void mp_register_gfxinit(void) {
@@ -442,4 +513,5 @@ void mp_register_gfxinit(void) {
     func_table_register(0x01DEB2, mp_01DEB2);
     func_table_register(0x01DECD, mp_01DECD);
     func_table_register(0x01E6D0, mp_01E6D0);
+    func_table_register(0x01A30D, mp_01A30D);
 }

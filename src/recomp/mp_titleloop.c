@@ -396,7 +396,11 @@ void mp_008BEB(void) {
         if (g_cpu.flag_C) {
             /* Still drawing */
             uint16_t buttons = bus_wram_read16(0x04CA);
-            if (buttons & 0x0010) return;  /* Button held */
+            if (buttons & 0x0010) {
+                /* Button held — continue drawing */
+                func_table_call(0x009564);
+                return;
+            }
 
             bus_wram_write8(0x0020, 0x00);
 

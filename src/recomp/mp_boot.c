@@ -605,6 +605,38 @@ void mp_0084D5(void) {
     /* JSR CODE_0087EE */
     func_table_call(0x0087EE);
 
+    /* Fix BG1/BG3 for toolbar visibility.
+     * mp_0087EE fills BG1 with $3DFE (opaque border tile). The canvas area
+     * (rows 3-24) gets overwritten by 0089C3/0089B1, but the bottom toolbar
+     * area (rows 25-31) stays $3DFE which covers BG3. The original game's
+     * CODE_01A18B fills BG1 with $0057 (transparent) first, but since we skip
+     * Phase 5-6, we need to clear the toolbar rows manually. */
+    {
+        uint8_t *wram = bus_get_wram();
+        /* Clear BG1 rows 25-31 (bottom toolbar area) with tile $0000 (transparent) */
+        /* Row 25 starts at $7E2000 + 25*64 = $7E2640 */
+        for (int i = 0; i < 7 * 64; i += 2) {
+            wram[0x2640 + i]     = 0x00;
+            wram[0x2640 + i + 1] = 0x00;
+        }
+        /* Also clear BG2 bottom rows for the same reason */
+        for (int i = 0; i < 7 * 64; i += 2) {
+            wram[0x2E40 + i]     = 0x00;
+            wram[0x2E40 + i + 1] = 0x00;
+        }
+    }
+
+    /* Write toolbar icons into BG3 tilemap.
+     * $0012 = icon count (15 = full toolbar). Tile $280 at BG3 base $6000
+     * maps to VRAM $7400 where DATA_038000 toolbar tiles are loaded.
+     * Priority 1, palette 0 — renders on top of BG1/BG2. */
+    bus_wram_write16(0x0012, 0x000F);
+    func_table_call(0x01A30D);
+
+    /* Queue BG1 + BG3 tilemap DMA */
+    func_table_call(0x01DE97);  /* BG1 tilemap DMA */
+    func_table_call(0x01DECD);  /* BG3 tilemap DMA */
+
     /* Initialize drawing with defaults */
     op_lda_imm16(0x0000);
     func_table_call(0x00B66C);
@@ -731,6 +763,29 @@ void mp_0084D5(void) {
     bus_wram_write8(0x011A, 0x17);
     bus_write8(0x00, 0x212E, 0x17);
     bus_wram_write8(0x011C, 0x17);
+
+    /* Write BG3 tilemap directly to VRAM $3800 via force blank DMA.
+     * This ensures toolbar icons survive any intermediate DMA queue
+     * processing that might overwrite VRAM $3800. */
+    {
+        uint8_t saved = bus_wram_read8(0x0104);
+        bus_write8(0x00, 0x2100, 0x80);  /* Force blank */
+
+        /* DMA channel 0: $7E:3000 ($800 bytes) → VRAM $3800 */
+        bus_write8(0x00, 0x2115, 0x80);  /* VMAIN: increment on high */
+        bus_write8(0x00, 0x2116, 0x00);  /* VMADDL = $00 */
+        bus_write8(0x00, 0x2117, 0x38);  /* VMADDH = $38 → VRAM $3800 */
+        bus_write8(0x00, 0x4300, 0x01);  /* DMA mode: 2-reg word */
+        bus_write8(0x00, 0x4301, 0x18);  /* Dest: $2118 (VRAM data) */
+        bus_write8(0x00, 0x4302, 0x00);  /* Src lo: $00 */
+        bus_write8(0x00, 0x4303, 0x30);  /* Src hi: $30 */
+        bus_write8(0x00, 0x4304, 0x7E);  /* Src bank: $7E */
+        bus_write8(0x00, 0x4305, 0x00);  /* Size lo: $00 */
+        bus_write8(0x00, 0x4306, 0x08);  /* Size hi: $08 = $0800 */
+        bus_write8(0x00, 0x420B, 0x01);  /* Trigger DMA ch0 */
+
+        bus_write8(0x00, 0x2100, saved);  /* Restore display */
+    }
 
     printf("Mario Paint recomp: canvas mode ready\n");
     printf("  INIDISP=$%02X BGMODE=$%02X BG12NBA=$%02X BG34NBA=$%02X\n",

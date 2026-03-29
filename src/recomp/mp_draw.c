@@ -46,8 +46,8 @@ void mp_00AAEF(void) {
  * ======================================================================== */
 void mp_00B051(void) {
     /* Check if this is an undo/alternate draw */
-    uint8_t draw_state = bus_wram_read8(0x0020);
-    uint8_t flag50 = bus_wram_read8(0x0050);
+    uint16_t draw_state = bus_wram_read16(0x0020);
+    uint16_t flag50 = bus_wram_read16(0x0050);
     if (draw_state & flag50) {
         func_table_call(0x00B32D);  /* Alternate draw mode */
         return;
@@ -62,50 +62,59 @@ void mp_00B051(void) {
         }
     }
 
-    /* Adjust coordinates for canvas origin */
-    int16_t x = (int16_t)bus_wram_read16(0x0086) - 8;
-    bus_wram_write16(0x0086, (uint16_t)x);
-    bus_wram_write16(0x0080, (uint16_t)x);
+    /* Adjust coordinates:
+     * ASM: x86 -= 8, x80 = x86
+     * If x was < 8 (borrow): y82 = y88 - 16, else y82 = y88 - 8
+     * y88 -= 8 always */
+    uint16_t raw_x = bus_wram_read16(0x0086);
+    uint16_t adj_x = raw_x - 8;
+    bus_wram_write16(0x0086, adj_x);
+    bus_wram_write16(0x0080, adj_x);
 
-    int16_t y = (int16_t)bus_wram_read16(0x0088);
-    if (x < 0) {
-        y -= 8;
+    uint16_t raw_y = bus_wram_read16(0x0088);
+    uint16_t adj_y82;
+    if (raw_x < 8) {
+        adj_y82 = raw_y - 16;  /* Extra -8 when x borrows */
+    } else {
+        adj_y82 = raw_y - 8;
     }
-    y -= 8;
-    bus_wram_write16(0x0082, (uint16_t)y);
-    y = (int16_t)bus_wram_read16(0x0088) - 8;
-    bus_wram_write16(0x0088, (uint16_t)y);
+    bus_wram_write16(0x0082, adj_y82);
+    bus_wram_write16(0x0088, raw_y - 8);
 
     /* Compute tile buffer offset from coordinates */
     func_table_call(0x00B305);
 
-    /* Plot rows of pixels */
     uint16_t saved_offset = bus_wram_read16(0x0084);
 
-    for (uint16_t row = 0; row < 0x0010; row++) {
+    /* Iterate rows: Y = 0,2,...,E (first tile), then 0x400,...,0x40E (second tile).
+     * Y is passed to B0D3 via g_cpu.Y as the pen tile row offset. */
+    uint16_t y_reg = 0x0000;
+    for (;;) {
         int16_t cur_y = (int16_t)bus_wram_read16(0x0088);
 
-        /* Bounds check Y */
         if (cur_y >= (int16_t)bus_wram_read16(0x19B2) &&
             cur_y < (int16_t)bus_wram_read16(0x19B4)) {
-            /* Plot this row */
+            g_cpu.Y = y_reg;
             func_table_call(0x00B0D3);
         }
 
-        /* Advance Y and tile offset */
         bus_wram_write16(0x0088, bus_wram_read16(0x0088) + 1);
+        y_reg += 2;
 
+        /* Check if row crosses tile boundary → advance tile offset by $3F0 */
         uint16_t ofs = bus_wram_read16(0x0084);
-        uint16_t row_in_tile = (row * 2 + ofs) & 0x000F;
-        if (row_in_tile == 0) {
-            ofs += 0x03F0;
-            bus_wram_write16(0x0084, ofs);
+        if (((y_reg + ofs) & 0x000F) == 0) {
+            bus_wram_write16(0x0084, ofs + 0x03F0);
         }
 
-        /* Handle two-tile-tall pen (rows 0-7 then 8-15) */
-        if (row == 7) {
+        /* After 8 rows of first tile (Y=$10): switch to second tile half */
+        if (y_reg == 0x0010) {
+            y_reg = 0x0400;
             bus_wram_write16(0x0084, saved_offset);
         }
+
+        /* After 8 rows of second tile (Y=$410): done */
+        if (y_reg == 0x0410) break;
     }
 }
 
@@ -143,16 +152,14 @@ void mp_009D7D(void) {
  *   Tile layout follows the BG tilemap addressing
  * ======================================================================== */
 void mp_00B305(void) {
-    int16_t x = (int16_t)bus_wram_read16(0x0080);
-    int16_t y = (int16_t)bus_wram_read16(0x0082);
+    uint16_t x = bus_wram_read16(0x0080);
+    uint16_t y = bus_wram_read16(0x0082);
 
-    /* Compute tile column and row */
-    uint16_t tile_col = (x >> 3) & 0x1F;
-    uint16_t tile_row = (y >> 3) & 0x1F;
-    uint16_t pixel_row = y & 0x07;
-
-    /* Tile offset: each tile is 32 bytes, 32 tiles per row */
-    uint16_t offset = (tile_row * 32 + tile_col) * 32 + pixel_row * 2;
+    /* From ASM: (x & $F8) * 4 + (y & $F8) * 128 + (y & 7) * 2 - $800 */
+    uint16_t offset = ((x & 0x00F8) << 2)
+                    + ((y & 0x00F8) << 7)
+                    + ((y & 0x0007) << 1)
+                    - 0x0800;
 
     bus_wram_write16(0x0084, offset);
 }

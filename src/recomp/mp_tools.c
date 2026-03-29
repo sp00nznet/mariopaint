@@ -555,29 +555,81 @@ void mp_00F921(void) {
 }
 
 /* ========================================================================
- * $01:D56D — Pen tile DMA queue
+ * Pen tile transform helper
  *
- * Queues a DMA transfer for the pen tile graphics.
- * Dispatches through a jump table based on the current pen mode.
- * The simplest mode (0) just copies 128 bytes.
+ * Copies 128 bytes from src to dst with optional transforms based on
+ * pen mode ($0997). Mode 0 = direct copy. Modes 1-7 handle flips and
+ * rotations using a bit-reverse LUT at $02:F000.
  * ======================================================================== */
-void mp_01D56D(void) {
+static void pen_tile_transform(uint16_t src, uint16_t dst) {
     uint16_t mode = 0;
     uint16_t erase = bus_wram_read16(0x1992);
     if (erase == 0) {
         mode = bus_wram_read16(0x0997);
     }
 
-    /* For the basic mode, copy pen data to the color table */
-    /* More complex modes handle various pen sizes/shapes */
-    uint16_t src_fg = 0x1BAA;
-    uint16_t dst_fg = 0x1CAA;
-
-    /* Simple copy mode: 128 bytes from src to dst */
-    for (int y = 0x7E; y >= 0; y -= 2) {
-        uint16_t val = bus_wram_read16(src_fg + y);
-        bus_wram_write16(dst_fg + y, val);
+    if (mode == 0) {
+        /* Mode 0: Direct copy (128 bytes) */
+        for (int y = 0x7E; y >= 0; y -= 2) {
+            uint16_t val = bus_wram_read16(src + y);
+            bus_wram_write16(dst + y, val);
+        }
+    } else if (mode == 1) {
+        /* Mode 1: Horizontal flip via bit-reverse LUT at $02:F000 */
+        /* The tile is 4 × 32-byte blocks. Flip reverses bits in each byte
+         * and swaps block pairs (left↔right halves of the 16-pixel pen). */
+        for (int blk = 0; blk < 4; blk++) {
+            uint16_t s = src + blk * 0x20;
+            /* Swap: src block 0↔2, 1↔3 → dst block 2↔0, 3↔1 */
+            uint16_t d = dst + ((blk ^ 2) * 0x20);
+            for (int i = 0; i < 0x20; i++) {
+                uint8_t val = bus_wram_read8(s + i);
+                uint8_t rev = bus_read8(0x02, 0xF000 + val);
+                bus_wram_write8(d + i, rev);
+            }
+        }
+    } else if (mode == 2) {
+        /* Mode 2: Vertical flip — reverse row order within each tile half.
+         * Each tile half = 2 blocks of 16 bytes (bp0-1, bp2-3).
+         * Rows within each 16-byte block are reversed (row 0↔7). */
+        for (int half = 0; half < 2; half++) {
+            for (int bp = 0; bp < 2; bp++) {
+                uint16_t s_base = src + half * 0x40 + bp * 0x10;
+                uint16_t d_base = dst + half * 0x40 + bp * 0x10;
+                for (int row = 0; row < 8; row++) {
+                    uint16_t val = bus_wram_read16(s_base + row * 2);
+                    bus_wram_write16(d_base + (7 - row) * 2, val);
+                }
+            }
+        }
+    } else {
+        /* Modes 3-7: For now, fall back to direct copy.
+         * These are compound transforms (flip+rotate) that are rarely
+         * used in normal drawing — the user would need to rotate the pen. */
+        for (int y = 0x7E; y >= 0; y -= 2) {
+            uint16_t val = bus_wram_read16(src + y);
+            bus_wram_write16(dst + y, val);
+        }
     }
+}
+
+/* ========================================================================
+ * $01:D56D — Pen tile transform (foreground: $1BAA → $1CAA)
+ *
+ * Transforms pen tile data from raw format to drawing format.
+ * ======================================================================== */
+void mp_01D56D(void) {
+    pen_tile_transform(0x1BAA, 0x1CAA);
+}
+
+/* ========================================================================
+ * $01:D597 — Pen tile transform (background: $1B2A → $1C2A)
+ *
+ * Transforms pen tile data from raw format to drawing format.
+ * This populates $1C2A which is read by B25E during pixel plotting.
+ * ======================================================================== */
+void mp_01D597(void) {
+    pen_tile_transform(0x1B2A, 0x1C2A);
 }
 
 /* ========================================================================
@@ -600,4 +652,5 @@ void mp_register_tools(void) {
     func_table_register(0x00A363, mp_00A363);
     func_table_register(0x00F921, mp_00F921);
     func_table_register(0x01D56D, mp_01D56D);
+    func_table_register(0x01D597, mp_01D597);
 }

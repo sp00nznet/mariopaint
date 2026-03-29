@@ -266,7 +266,7 @@ void mp_00B6F4(void) {
         }
     }
 
-    func_table_call(0x01D56D);
+    func_table_call(0x01D597);  /* Background pen transform: $1B2A → $1C2A */
 }
 
 /* ========================================================================

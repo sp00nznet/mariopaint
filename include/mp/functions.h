@@ -68,6 +68,7 @@ void mp_01DE97(void);  /* Queue BG1 tilemap DMA */
 void mp_01DEB2(void);  /* Queue BG2 tilemap DMA */
 void mp_01DECD(void);  /* Queue BG3 tilemap DMA */
 void mp_01E6D0(void);  /* Direct DMA queue execution */
+void mp_01A30D(void);  /* Toolbar icon tilemap writer */
 void mp_01DE_queue_dma(const uint8_t *record, int len);
 
 /* Sprite Engine (mp_sprites.c) */
@@ -160,7 +161,8 @@ void mp_009DAB(void);  /* Fill tool handler */
 void mp_009DFB(void);  /* Stamp tool handler */
 void mp_00A363(void);  /* Tool palette display update */
 void mp_00F921(void);  /* Palette row multiplier */
-void mp_01D56D(void);  /* Pen tile DMA */
+void mp_01D56D(void);  /* Pen tile transform (FG) */
+void mp_01D597(void);  /* Pen tile transform (BG) */
 
 /* Drawing Core (mp_draw.c) */
 void mp_register_draw(void);
@@ -203,6 +205,7 @@ void mp_019372(void);  /* Special mode dispatch */
 /* Shapes / Remaining (mp_shapes.c) */
 void mp_register_shapes(void);
 void mp_00AAFB(void);  /* Line drawing */
+void mp_00AF5A(void);  /* Bresenham line algorithm */
 void mp_00AB26(void);  /* Rectangle drawing */
 void mp_00AB8A(void);  /* Ellipse drawing */
 void mp_00ADFB(void);  /* Stamp preview */
