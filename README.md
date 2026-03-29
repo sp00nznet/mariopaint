@@ -37,28 +37,31 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 
 ## Status
 
-**Active recompilation** — 161 functions recompiled across 16 source files. The game boots, plays audio, renders the title screen, and transitions to a working canvas with palette bar, cursor, and drawing tools.
+**Active recompilation** — ~175 functions recompiled across 16 source files. Canvas drawing works with click-and-drag, toolbar palette visible, SPC700 audio plays.
 
 ![Title Screen](title2.png)
 ![Clean Canvas](cleancanvas.png)
 
 ### What works
 - **Full game flow**: boot → SPC700 audio upload → title screen → click → canvas mode
-- **Title screen**: "MARIOPAINT" with all sprites, cursor, "(c) 1992 Nintendo"
-- **Canvas mode**: clean white canvas with color palette bar, border frame, tool cursor
+- **Title screen**: "MARIOPAINT" with cursor, "(c) 1992 Nintendo", sprite animations
+- **Canvas drawing**: pencil tool with click-and-drag, visible pixel output
+- **Drawing tools**: pencil, line (Bresenham), rectangle, ellipse, fill, stamp, spray can, undo
+- **Toolbar**: 15-color palette bar across top of canvas
 - **SPC700 audio**: direct RAM upload, 4-channel command queues — music plays!
 - **Mouse input**: SNES Mouse mapped from SDL2, cursor tracks mouse movement
 - **PPU rendering**: all 4 BG layers, sprites, palette, DMA transfers working
-- **Drawing tools**: pencil, line, rectangle, ellipse, fill, stamp, spray can, undo
+- **F12 screenshots**: PNG output with toast notification (stb_image_write + SDL2_ttf)
 - NMI handler with OAM/VRAM/palette DMA, PPU register mirror writeback
 - HDMA (3 channels), frame sync, fade in/out, sprite animation engine
-- Tilemap generation, canvas DMA refresh, tool/palette selection
+- Full 4BPP bitplane canvas manipulation (B25E/B23C/B1C2 pipeline)
 
 ### Known issues
-- Bottom toolbar (BG3) partially rendering — tool icons need more tilemap work
-- Mouse sensitivity needs tuning (currently raw SDL deltas / 2)
-- Drawing doesn't produce visible pixels yet ($00B25E/$00B23C pen mask/apply not implemented)
-- Title screen animation states 2-11 not recompiled (title shows static text only)
+- Cursor shows prohibition icon (cursor sprite selection needs work)
+- Mouse position offset (SDL mouse scaling needs tuning)
+- Bottom toolbar/palette bar not yet visible
+- Title screen fly-by sprite characters partially working (animation states 2-11)
+- Title screen brightness pulsing during idle animation
 
 ### Recompilation progress
 | Area | Functions | Source File |
@@ -67,25 +70,26 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 | DMA/PPU Engine | 22 | `mp_bank01.c` |
 | Input/Cursor | 7 | `mp_input.c` |
 | Game Logic | 5 | `mp_gamelogic.c` |
-| Graphics Init | 12 | `mp_gfxinit.c` |
+| Graphics Init | 13 | `mp_gfxinit.c` |
 | Sprite Engine | 3 | `mp_sprites.c` |
 | Canvas/UI | 5 | `mp_canvas.c` |
 | Audio Engine | 11 | `mp_audio.c` |
 | Title Screen | 2 | `mp_title.c` |
 | Boot Helpers | 13 | `mp_helpers.c` |
 | Title Loop/Demo | 12 | `mp_titleloop.c` |
-| Drawing Tools | 16 | `mp_tools.c` |
+| Drawing Tools | 17 | `mp_tools.c` |
 | Drawing Core | 9 | `mp_draw.c` |
+| Canvas Interaction | 9 | `mp_interact.c` |
 | Miscellaneous | 11 | `mp_misc.c` |
-| Shapes/Remaining | 15 | `mp_shapes.c` |
-| **Total** | **161** | **~10,000 lines of C** |
+| Shapes/Drawing | 16 | `mp_shapes.c` |
+| **Total** | **~175** | **~12,000 lines of C** |
 
 ### What's next
-- Sprite animation engine (`$01962C`, `$01FA68`, `$01F91E`)
-- Canvas tilemap builders
-- Drawing tool click handlers
-- SPC700 audio upload and playback
-- Title screen / tool screens
+- Cursor icon fix (prohibition → correct tool cursor)
+- Mouse position accuracy
+- Bottom toolbar/palette display
+- Title screen animation states 2-11 (fly-by characters)
+- Canvas audio (SPC700 canvas-mode sample upload)
 - Music composer
 - Gnat Attack minigame
 
@@ -94,7 +98,7 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 ### Prerequisites
 - CMake 3.16+
 - A C17 compiler (MSVC 2022, GCC, Clang)
-- SDL2 (via vcpkg on Windows, or your system package manager)
+- SDL2, SDL2_ttf (via vcpkg on Windows, or your system package manager)
 
 ### Build
 
@@ -103,9 +107,8 @@ git clone --recursive https://github.com/sp00nznet/mariopaint.git
 cd mariopaint
 
 # Windows (MSVC + vcpkg)
-cmake -B build -G "Visual Studio 17 2022" -A x64 \
-  -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
-cmake --build build --config Debug
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=C:/vcpkg/scripts/buildsystems/vcpkg.cmake
+cmake --build build --config Release
 
 # Linux / macOS
 cmake -B build && cmake --build build
@@ -114,10 +117,15 @@ cmake -B build && cmake --build build
 ### Run
 
 ```bash
-./build/Debug/mp_launcher "path/to/Mario Paint (JU).sfc"
+./build/Release/mp_launcher "path/to/Mario Paint (JU).sfc"
 ```
 
 You'll need to supply your own ROM file. We don't distribute copyrighted material.
+
+**Controls:**
+- Mouse: SNES Mouse (move cursor, left click to draw/select)
+- F12: Save PNG screenshot
+- Escape: Quit
 
 ## How it works
 
@@ -162,7 +170,11 @@ mariopaint/
 │       ├── mp_bank01.c     # Bank 01 DMA/PPU/system helpers
 │       ├── mp_input.c      # Mouse input + cursor + animations
 │       ├── mp_gamelogic.c  # Game logic dispatch + cursor rendering
-│       └── mp_gfxinit.c    # Palette/tile/tilemap loading from ROM
+│       ├── mp_gfxinit.c    # Palette/tile/tilemap loading from ROM
+│       ├── mp_draw.c       # Pixel plotting core (B051/B0D3/B1C2)
+│       ├── mp_shapes.c     # Line/rect/ellipse + pen mask (B25E/B23C)
+│       ├── mp_tools.c      # Tool handlers + pen tile transforms
+│       └── ...             # 8 more source files
 └── ext/
     └── snesrecomp/         # SNES hardware backend (submodule)
 ```
@@ -177,9 +189,3 @@ mariopaint/
 ## Contributing
 
 This is an active recompilation effort. The main work is translating 65816 assembly into C functions using the cpu_ops helpers. If you're familiar with SNES assembly or have experience with game reverse engineering, contributions are welcome!
-
-## License
-
-MIT — see [LICENSE](LICENSE).
-
-The original Mario Paint is (c) 1992 Nintendo. This project does not include any copyrighted game data. You must supply your own legally obtained ROM file.
