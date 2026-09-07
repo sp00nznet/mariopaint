@@ -99,6 +99,43 @@ int main(int argc, char *argv[]) {
         return 0;
     }
 
+    /*
+     * Let interpreted ROM code reach the recompiled frame driver.
+     *
+     * The interpreter is a plain cpu_runOpcode loop: a JSL inside interpreted
+     * code is executed by the emulated CPU and never routed through the
+     * dispatch table, so a recompiled C function is unreachable from it. That
+     * matters for $01E2CE, which *is* our frame driver (begin_frame ->
+     * trigger_vblank -> NMI -> end_frame). Without this, any routine we hand to
+     * the interpreter runs its whole vblank-waiting loop without presenting a
+     * single frame — the title screen ran entirely invisibly and the window sat
+     * frozen until control came back.
+     *
+     * The opcode-fetch hook that timed-recomp interception uses works here too
+     * (LakeSnes calls it from cpu_runOpcode, which the interpreter drives), so
+     * registering $01E2CE as an intercept makes interpreted code call the
+     * native frame driver and present frames normally.
+     *
+     * Recomp path only — real-frame mode must run the genuine ROM untouched.
+     *
+     * $018260 is the important one. The ROM's title loop has no frame sync in
+     * it at all — it spins polling the mouse bytes at $04C6/$04C8/$04CA and
+     * bails to the demo after $800 idle iterations. On hardware an NMI drives
+     * the frame underneath it; interpreted here, it burns all 2048 iterations
+     * instantly with nothing drawn and no input possible, so the title screen
+     * flashed past invisibly. Our recompiled mp_018260 drives a frame per
+     * iteration, which is what makes the screen appear and respond.
+     *
+     * The fades are the same story: their ROM loops step brightness one step
+     * per vblank, so interpreted they finish instantly with nothing drawn and
+     * the screen left mid-fade. The recompiled versions drive a frame per step.
+     */
+    recomp_timed_add_intercept(0x018260, false);  /* title loop,  JSR -> RTS */
+    recomp_timed_add_intercept(0x01E2CE, true);   /* frame sync,  JSL -> RTL */
+    recomp_timed_add_intercept(0x01E794, true);   /* fade in,     JSL -> RTL */
+    recomp_timed_add_intercept(0x01E7C9, true);   /* fade out,    JSL -> RTL */
+    recomp_timed_recomp_enable();
+
     printf("Mario Paint recomp: running boot chain\n");
 
     /*

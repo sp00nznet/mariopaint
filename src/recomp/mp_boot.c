@@ -155,9 +155,13 @@ void mp_008013(void) {
     /* REP #$30 — 16-bit A/X/Y */
     op_rep(0x30);
 
-    /* Set stack to $1FFF */
+    /* LDX #$1FFF; TXS — set the stack to $1FFF.
+     * This used to call OP_TCS() (S = accumulator), which left S at 0. Pure
+     * recompiled C never touches the emulated stack so it went unnoticed, but
+     * every interpreted ROM routine ran with S=0: its pushes wrapped through
+     * $0000 and scribbled over direct page and the game's variables. */
     g_cpu.X = 0x1FFF;
-    OP_TCS();
+    OP_TXS();
 
     /* Set DP = $0000 */
     g_cpu.Y = 0x0000;
