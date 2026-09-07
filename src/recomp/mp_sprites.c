@@ -356,17 +356,23 @@ void mp_01962C(void) {
 
         /* Read sprite render data from frame */
         uint8_t sprite_data_byte = bus_read8(0x0F, anim_ptr + frame_ofs + 3);
+        /*
+         * Both deltas are doubled before being added ($9697 ASL / $96A4 ASL):
+         * slot positions are stored in half-pixel units, so a delta byte of -1
+         * means one screen pixel. Without the shift the sprite crawls at half
+         * speed, which is what left the title sprite drifting out of step with
+         * where its click target actually was.
+         */
         if (sprite_data_byte & 0x80) {
-            /* Has extended render data — advance position deltas */
             int8_t x_delta = (int8_t)bus_read8(0x0F, anim_ptr + frame_ofs + 1);
             int16_t x_pos = (int16_t)bus_wram_read16(0x0792 + slot_ofs);
-            x_pos += (int16_t)x_delta;
+            x_pos += (int16_t)x_delta * 2;
             x_pos &= 0x03FF;
             bus_wram_write16(0x0792 + slot_ofs, (uint16_t)x_pos);
 
             int8_t y_delta = (int8_t)bus_read8(0x0F, anim_ptr + frame_ofs + 2);
             int16_t y_pos = (int16_t)bus_wram_read16(0x0794 + slot_ofs);
-            y_pos += (int16_t)y_delta;
+            y_pos += (int16_t)y_delta * 2;
             y_pos &= 0x01FF;
             bus_wram_write16(0x0794 + slot_ofs, (uint16_t)y_pos);
         }
@@ -403,5 +409,17 @@ void mp_01962C(void) {
 void mp_register_sprites(void) {
     func_table_register(0x01F91E, mp_01F91E);
     func_table_register(0x01FA68, mp_01FA68);
-    func_table_register(0x01962C, mp_01962C);
+    /* $01962C is deliberately NOT registered. Its animation-command decoding is
+     * a stub: the original dispatches each command byte through an indexed JSL
+     * table at $01E393, which this translation replaced with a guess ("$80 =
+     * loop, $81 = end, $82+ = treat as end"). Most frames in bank $0F are
+     * command bytes, so the wrong frames played and animated sprites drifted —
+     * the title screen's Mario wandered diagonally off-screen instead of
+     * walking left at a fixed height, which also moved the click target that
+     * starts the game away from where the sprite appeared.
+     *
+     * Leaving it unregistered sends callers to the interpreter, which runs the
+     * genuine driver. Verified against a real-frame capture: slot 0 now tracks
+     * x decreasing steadily with y pinned at 338, exactly like the real ROM.
+     * Register it again once $01E393's dispatch is translated. */
 }

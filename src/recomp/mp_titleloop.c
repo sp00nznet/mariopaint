@@ -123,8 +123,15 @@ void mp_018C43(void) {
  * ======================================================================== */
 void mp_018CB7(void) {
     op_lda_imm16(0x0000);
-    mp_01962C();
+    func_table_call(0x01962C);
 }
+
+/* Set by $018CBF when the title screen should hand over to the canvas.
+ * The original does this with a stack trick (LDA $0003; TCS; RTS at $01:8D2B)
+ * that unwinds straight out of the title loop; a flag is the C equivalent.
+ * This used to borrow g_quit, which conflated "leave the title" with "close
+ * the window". */
+static bool s_title_exit = false;
 
 /* ========================================================================
  * $01:8CBF — Title screen input check
@@ -147,7 +154,7 @@ void mp_018CBF(void) {
         uint16_t p2_held = bus_wram_read16(0x0134);
         if (p2_held == 0x9080) {
             bus_wram_write16(0x0565, 0x0000);
-            g_quit = true;  /* Force exit from title loop */
+            s_title_exit = true;
             return;
         }
     }
@@ -157,7 +164,7 @@ void mp_018CBF(void) {
         uint16_t p2_held = bus_wram_read16(0x0134);
         if (p2_held == 0xA080) {
             bus_wram_write16(0x0565, 0x0001);
-            g_quit = true;
+            s_title_exit = true;
             return;
         }
     }
@@ -166,19 +173,35 @@ void mp_018CBF(void) {
     uint16_t p2_held = bus_wram_read16(0x0134);
     if (p2_held == 0xFFFF) {
         bus_wram_write16(0x0565, 0x0001);
-        g_quit = true;
+        s_title_exit = true;
         return;
     }
 
-    /* Mouse click check — any left click skips title screen.
-     * Original checks if click is on the logo area, but our logo
-     * sprite position ($0792/$0794) may not be initialized correctly
-     * during early title states. Accept any click for now. */
-    uint8_t buttons = bus_wram_read8(0x04CA);
-    if (buttons & 0x20) {
-        bus_wram_write16(0x0565, 0x0000);
-        g_quit = true;
-        return;
+    /*
+     * Mouse click ($01:8CEC-$8D19). The click only starts the game when it
+     * lands ON the sprite at $0792/$0794 (positions are stored doubled), not
+     * anywhere on screen:
+     *
+     *   LDA $04DE : ASL : SEC : SBC $0794 : CLC : ADC #$0040 : CMP #$0048 : BCS out
+     *   LDA $04DC : ASL : SEC : SBC $0792 : CLC : ADC #$0030 : CMP #$0060 : BCS out
+     *
+     * i.e. an unsigned window test around the sprite. Accepting any click here
+     * (as this used to) is not just imprecise — it made every stray click exit
+     * the title, and the loop's real exit path never ran.
+     */
+    uint16_t buttons = bus_wram_read16(0x04CA);
+    if (buttons & 0x0020) {
+        uint16_t y_rel = (uint16_t)((uint16_t)(bus_wram_read16(0x04DE) << 1)
+                                    - bus_wram_read16(0x0794) + 0x0040);
+        if (y_rel < 0x0048) {
+            uint16_t x_rel = (uint16_t)((uint16_t)(bus_wram_read16(0x04DC) << 1)
+                                        - bus_wram_read16(0x0792) + 0x0030);
+            if (x_rel < 0x0060) {
+                bus_wram_write16(0x0565, 0x0000);
+                s_title_exit = true;
+                return;
+            }
+        }
     }
 
     /* No skip — frame sync and continue */
@@ -192,16 +215,14 @@ void mp_018CBF(void) {
  * runs state machine, checks input. Loops until input detected
  * or demo timeout ($1980 reaches $0800).
  *
- * Note: The original code does a stack trick to exit (TCS; RTS)
- * from $018CBF. In the recomp we use a flag approach instead —
- * $018CBF sets g_quit temporarily when it wants to exit the loop,
- * and we restore g_quit=false after the loop.
+ * Note: The original exits via a stack trick (LDA $0003; TCS; RTS in
+ * $018CBF) that unwinds straight out of this loop. The recomp uses the
+ * s_title_exit flag instead.
  * ======================================================================== */
 void mp_018260(void) {
-    /* Save g_quit state — 018CBF may set it to break the loop */
-    bool saved_quit = g_quit;
+    s_title_exit = false;
 
-    while (!g_quit) {
+    while (!g_quit && !s_title_exit) {
         /* Clear OAM (all sprites offscreen) */
         mp_01E06F();
 
@@ -216,24 +237,31 @@ void mp_018260(void) {
 
         /* Check input / frame sync */
         mp_018CBF();
-        if (g_quit) break;
+        if (g_quit || s_title_exit) break;
 
-        /* Check mouse button activity (not movement — movement resets timer) */
-        uint16_t mouse_buttons = bus_wram_read16(0x04CA);
-        uint16_t mouse_move = bus_wram_read16(0x04C6) | bus_wram_read16(0x04C8);
-        if (mouse_buttons != 0) {
-            /* Button pressed — this should have been caught by 018CBF above,
-             * but in case it wasn't, don't reset the timer */
-        } else if (mouse_move != 0) {
-            bus_wram_write16(0x1980, 0x0000);
-            continue;  /* Movement resets timer */
+        /*
+         * Idle counter ($01:8270-$828C). Any mouse activity at all — X or Y
+         * displacement or a button — resets it; only a fully idle stretch runs
+         * the counter up to $0800 and drops into the attract demo.
+         *
+         * The counter is $0411 and the threshold is $0800, both straight from
+         * the ROM. This used to count in $1980 with a threshold of $00C0
+         * ("~3 seconds for quick testing"), so the demo kicked in after about
+         * three idle seconds and set the demo flag $04E2, which left the game
+         * in attract mode with the toolbars unresponsive.
+         */
+        uint16_t activity = (bus_wram_read16(0x04C6) | bus_wram_read16(0x04C8)
+                             | bus_wram_read16(0x04CA)) & 0x00FF;
+        if (activity != 0) {
+            bus_wram_write16(0x0411, 0x0000);
+            continue;
         }
 
-        /* Increment demo timer */
-        uint16_t timer = bus_wram_read16(0x1980) + 1;
-        bus_wram_write16(0x1980, timer);
 
-        if (timer >= 0x00C0) {  /* ~3 seconds for quick testing */
+        uint16_t timer = bus_wram_read16(0x0411) + 1;
+        bus_wram_write16(0x0411, timer);
+
+        if (timer >= 0x0800) {
             /* Demo timeout — set up demo playback */
             bus_wram_write16(0x04DC, 0x0080);
             bus_wram_write16(0x04DE, 0x0080);
@@ -249,8 +277,19 @@ void mp_018260(void) {
         }
     }
 
-    /* Restore g_quit — the 018CBF "exit" was just to break this loop */
-    g_quit = saved_quit;
+    /*
+     * Reproduce the original's exit ($01:8D2B: LDA $0003 : TCS : RTS).
+     *
+     * $018000 saves the stack pointer to $0003 before calling this loop
+     * ($01:80E9-$80ED), and the exit path restores it rather than unwinding
+     * the nested calls it was sitting in. When this function is reached by
+     * interception from interpreted code, returning normally leaves the
+     * emulated stack where the loop left it, and $018000 then resumes on an
+     * inconsistent stack: it ran away for 20 million opcodes and aborted at
+     * pc=00:0004 with SP drifted to $1B20. Restoring S here lets the
+     * intercept's simulated RTS return to the right frame.
+     */
+    g_cpu.S = bus_wram_read16(0x0003);
 }
 
 /* ========================================================================

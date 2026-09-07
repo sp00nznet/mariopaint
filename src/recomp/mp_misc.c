@@ -388,7 +388,7 @@ void mp_01934F(void) {
      * Updates sprite animation, checks for input. */
     mp_01E06F();
     op_lda_imm16(0x0028);
-    mp_01962C();
+    func_table_call(0x01962C);
 }
 
 /* $01:9372 — Jump to special mode (from title screen) */

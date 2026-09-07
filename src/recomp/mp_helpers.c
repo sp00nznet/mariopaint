@@ -443,7 +443,7 @@ void mp_018F52(void) {
 
     /* Animate toolbar sprite */
     op_lda_imm16(0x0028);
-    mp_01962C();
+    func_table_call(0x01962C);
 
     /* Enable display (brightness = $0F, no force blank) */
     op_sep(0x20);
@@ -488,7 +488,7 @@ void mp_018F52(void) {
     while (!g_quit) {
         mp_01E06F();
         op_lda_imm16(0x0028);
-        mp_01962C();
+        func_table_call(0x01962C);
         mp_01E2CE();
         if (g_quit) return;
 
