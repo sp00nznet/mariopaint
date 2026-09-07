@@ -29,6 +29,7 @@
 #include <mp/functions.h>
 
 #include <stdio.h>
+#include <stdlib.h>
 #include <stdbool.h>
 
 /* Global quit flag — set by mp_01E2CE when window is closed */
@@ -62,6 +63,22 @@ int main(int argc, char *argv[]) {
     /* Anything not yet recompiled runs the original ROM code on the
      * LakeSnes CPU instead of silently doing nothing. */
     recomp_interp_set_enabled(true);
+
+    /*
+     * Real-frame mode (MP_REALFRAME=1): run the genuine ROM through LakeSnes's
+     * full cycle-accurate frame instead of the recompiled boot chain. No
+     * recompiled code participates. This is the ground truth to validate the
+     * recomp against — capture the same frame both ways and diff. It is also
+     * the only way to reach screens the recomp can't drive yet (the music
+     * composer, Gnat Attack), since the real CPU handles their state machines.
+     */
+    if (getenv("MP_REALFRAME")) {
+        printf("Mario Paint recomp: real-frame mode (genuine ROM via LakeSnes)\n");
+        while (snesrecomp_realframe_begin())
+            snesrecomp_realframe_end();
+        snesrecomp_shutdown();
+        return 0;
+    }
 
     printf("Mario Paint recomp: running boot chain\n");
 
