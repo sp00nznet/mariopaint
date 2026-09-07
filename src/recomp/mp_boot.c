@@ -15,7 +15,7 @@
  *   $00:84D5 — Main application init
  */
 
-#include <mp/cpu_ops.h>
+#include <snesrecomp/cpu_ops.h>
 #include <mp/functions.h>
 #include <snesrecomp/snesrecomp.h>
 
@@ -915,7 +915,7 @@ void mp_0080D4(void) {
 
     /* JSL CODE_01DDB8, CODE_01DDE1, CODE_01DE2D */
     func_table_call(0x01DDB8);
-    func_table_call(0x01DDE1);
+    mp_01DDE1();  /* Direct call (no dispatch needed; target is known) */
     func_table_call(0x01DE2D);
 
     /* Decrement timers */

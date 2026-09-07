@@ -17,10 +17,15 @@
  *   mp_01E2CE yielding to the frame driver each iteration.
  *   g_quit is set when the user closes the window, causing
  *   mp_00865A to break its loop and return to main().
+ *
+ * Unrecompiled subroutines fall through to snesrecomp's 65816
+ * interpreter (recomp_interp_*), so func_table_call never dead-ends
+ * on an address we haven't translated yet.
  */
 
 #include <snesrecomp/snesrecomp.h>
-#include <mp/cpu_ops.h>
+#include <snesrecomp/platform.h>
+#include <snesrecomp/cpu_ops.h>
 #include <mp/functions.h>
 
 #include <stdio.h>
@@ -35,7 +40,7 @@ int main(int argc, char *argv[]) {
         return 1;
     }
 
-    /* Initialize snesrecomp (LakeSnes + SDL2) */
+    /* Initialize snesrecomp (LakeSnes + SDL2 + ImGui menu) */
     if (!snesrecomp_init("Mario Paint", 3)) {
         fprintf(stderr, "Failed to initialize snesrecomp\n");
         return 1;
@@ -53,6 +58,10 @@ int main(int argc, char *argv[]) {
 
     /* Register all recompiled functions */
     mp_register_all();
+
+    /* Anything not yet recompiled runs the original ROM code on the
+     * LakeSnes CPU instead of silently doing nothing. */
+    recomp_interp_set_enabled(true);
 
     printf("Mario Paint recomp: running boot chain\n");
 

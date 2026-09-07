@@ -19,7 +19,7 @@
  * Reference: Yoshifanatic1/Mario-Paint-Disassembly
  */
 
-#include <mp/cpu_ops.h>
+#include <snesrecomp/cpu_ops.h>
 #include <mp/functions.h>
 #include <snesrecomp/snesrecomp.h>
 
@@ -428,8 +428,11 @@ void mp_01A30D(void) {
     /* Write 2x2 tile entries for each icon.
      * Toolbar tile graphics are at VRAM $7400. With BG34NBA=$66 (base $6000),
      * tile $280 maps to $6000 + $280*8 = $7400. Use priority 1 so BG3
-     * renders on top of BG1/BG2 in Mode 1. Palette 2 for toolbar colors. */
-    uint16_t tile = 0x8C80;  /* priority 1, palette 0, H-flip, V-flip, tile $280 */
+     * renders on top of BG1/BG2 in Mode 1 with BG3 priority enabled.
+     *
+     * Tilemap format: V.H.P.PPP.TTTTTTTTTT
+     *   bit 13 = priority 1, bits 9-0 = tile $280 → $2280 */
+    uint16_t tile = 0x2280;  /* priority 1, palette 0, no flip, tile $280 */
     int ofs = 0;
 
     for (uint16_t i = 0; i < num_icons; i++) {

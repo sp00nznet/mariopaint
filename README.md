@@ -52,9 +52,29 @@ Because it's a weird, wonderful game that nobody expected to be recompiled:
 - **Mouse input**: SNES Mouse mapped from SDL2, cursor tracks mouse movement
 - **PPU rendering**: all 4 BG layers, sprites, palette, DMA transfers working
 - **F12 screenshots**: PNG output with toast notification (stb_image_write + SDL2_ttf)
+- **ImGui menu bar** (File / Graphics / Sound / Controller / Multiplayer / Help) and
+  save-states — provided by snesrecomp, no local copy
+- **Interpreter fallback**: any subroutine not yet recompiled runs the original ROM
+  code on the LakeSnes CPU, so `func_table_call` never dead-ends on an untranslated
+  address. Unexplored screens (composer, Gnat Attack) can be reached before their
+  functions are hand-written.
 - NMI handler with OAM/VRAM/palette DMA, PPU register mirror writeback
-- HDMA (3 channels), frame sync, fade in/out, sprite animation engine
+- HDMA (3 channels, now applied per scanline), frame sync, fade in/out, sprite animation
 - Full 4BPP bitplane canvas manipulation (B25E/B23C/B1C2 pipeline)
+
+### Recompilation coverage
+
+`snesrecomp`'s call-graph crawler (`py ext/snesrecomp/tools/callgraph.py <rom>`) seeds
+from the CPU vectors and resolves jump tables:
+
+```
+461 reachable functions  |  164 recompiled  =  36%
+bank $00: 263   bank $01: 192   bank $0F: 6
+13 jump-table dispatch sites resolved (202 handler entries)
+```
+
+The structural hubs (top functions by caller count) are recompiled except `$01F84F`
+(19 callers) — the highest-leverage target remaining.
 
 ### Known issues
 - Cursor shows prohibition icon (cursor sprite selection needs work)

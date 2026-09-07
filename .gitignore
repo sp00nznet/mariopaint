@@ -15,3 +15,12 @@ build/
 .vs/
 CMakeSettings.json
 out/
+
+# Local-only: agent instructions and per-machine settings (not published)
+CLAUDE.md
+.claude/
+
+# Debug captures
+screenshot_*.png
+*.png.bak
+ppudump.txt

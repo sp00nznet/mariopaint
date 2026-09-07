@@ -15,7 +15,7 @@
  * Reference: Yoshifanatic1/Mario-Paint-Disassembly
  */
 
-#include <mp/cpu_ops.h>
+#include <snesrecomp/cpu_ops.h>
 #include <mp/functions.h>
 #include <snesrecomp/snesrecomp.h>
 
