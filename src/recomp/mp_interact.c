@@ -274,22 +274,8 @@ void mp_01834B(void) { /* Title state 2+: complex animation — not yet recompil
  * Register all interaction functions.
  * ======================================================================== */
 void mp_register_interact(void) {
-    /* $009001 / $0091C7 are deliberately NOT registered.
-     *
-     * mp_009001 ends by storing its computed zone index into $19AA. The ROM
-     * never stores a nonzero value there at all — the only direct write to
-     * $19AA in the whole ROM is STZ $19AA at $00:900A, inside this very
-     * routine. And $19AA gates the toolbar hit test: $00:8BEB does
-     *
-     *     JSR $9001 : LDA $04CA : BIT #$0011 : BEQ out
-     *     LDA $19AA : BNE $8C10          <- nonzero skips the hit test
-     *     LDA $04DE : CMP #$0018 : BCC $8BA9   <- y < 24  -> top palette bar
-     *                 CMP #$00C8 : BCS $8BC6   <- y >= 200 -> bottom tool bar
-     *
-     * so leaving a zone index in $19AA made every toolbar click fall through
-     * to $8C10 instead of reaching either bar's handler. Interpreted, $19AA
-     * reads back 0 as it should. Register these again once the routine's tail
-     * ($00:9007 onward) is translated properly. */
+    func_table_register(0x009001, mp_009001);
+    func_table_register(0x0091C7, mp_0091C7);
     func_table_register(0x009564, mp_009564);
     func_table_register(0x009598, mp_009598);
     func_table_register(0x0095E7, mp_0095E7);
