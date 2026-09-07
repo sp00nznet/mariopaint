@@ -216,14 +216,37 @@ void mp_0089B1(void) {
 void mp_0089C3(void) {
     uint8_t *wram = bus_get_wram();
 
-    /* Top border: fill $2000-$203E with $21EE */
-    /* BG1 rows 0-4: transparent tile $01FF (zeroed in VRAM).
-     * BG3 palette icons show through at their positions.
-     * BG3 non-icon positions use tile $00AE which we also zero. */
-    for (int x = 0; x < 5 * 64; x += 2) {
-        wram[0x2000 + x]     = 0xFF;
-        wram[0x2000 + x + 1] = 0x01;
+    /* Tilemap rows are 32 entries of 2 bytes = $40 bytes apart. */
+    #define BG1_MAP_PUT(row, col, val)                                   \
+        do {                                                             \
+            uint32_t o_ = 0x2000 + (row) * 0x40 + (col) * 2;             \
+            wram[o_]     = (uint8_t)((val) & 0xFF);                      \
+            wram[o_ + 1] = (uint8_t)((val) >> 8);                        \
+        } while (0)
+
+    /* Row 0 — top border, one repeated tile across the full width. */
+    for (int col = 0; col < 32; col++)
+        BG1_MAP_PUT(0, col, 0x21EE);
+
+    /*
+     * Rows 1-2 — the toolbar itself: the current-colour swatch, the 15-colour
+     * palette and the creature icon, each drawn from its own tile. The tiles
+     * run in two banks of 16 across each row:
+     *
+     *   row 1: cols  0-15 = $2100..$210F   cols 16-31 = $2120..$212F
+     *   row 2: cols  0-15 = $2110..$211F   cols 16-31 = $2130..$213F
+     *
+     * ($21xx = priority 1, palette 0, tile $1xx.) Verified byte-for-byte
+     * against the real ROM's BG1 tilemap — see docs/ref/.
+     */
+    for (int col = 0; col < 16; col++) {
+        BG1_MAP_PUT(1, col,      0x2100 + col);
+        BG1_MAP_PUT(1, col + 16, 0x2120 + col);
+        BG1_MAP_PUT(2, col,      0x2110 + col);
+        BG1_MAP_PUT(2, col + 16, 0x2130 + col);
     }
+
+    #undef BG1_MAP_PUT
 }
 
 /* ========================================================================

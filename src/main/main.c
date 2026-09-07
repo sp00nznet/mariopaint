@@ -65,6 +65,25 @@ int main(int argc, char *argv[]) {
     recomp_interp_set_enabled(true);
 
     /*
+     * MP_INTERP_FUNCS="018000,0087EE" — hand specific addresses back to the
+     * interpreter even though a recompiled version exists. Registering NULL
+     * makes func_table_lookup miss, so dispatch falls through to the genuine
+     * ROM code. This is the A/B lever for "is our translation of X wrong?":
+     * run it interpreted and see if the symptom goes away.
+     */
+    {
+        const char *list = getenv("MP_INTERP_FUNCS");
+        while (list && *list) {
+            char *end;
+            unsigned long addr = strtoul(list, &end, 16);
+            if (end == list) break;
+            func_table_register((uint32_t)addr, NULL);
+            printf("mp: $%06lX handed to the interpreter\n", addr);
+            list = (*end == ',') ? end + 1 : end;
+        }
+    }
+
+    /*
      * Real-frame mode (MP_REALFRAME=1): run the genuine ROM through LakeSnes's
      * full cycle-accurate frame instead of the recompiled boot chain. No
      * recompiled code participates. This is the ground truth to validate the

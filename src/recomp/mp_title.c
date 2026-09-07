@@ -214,12 +214,24 @@ void mp_018000(void) {
     /* Clear OAM */
     mp_01E06F();
 
-    /* Set HDMA window flag */
+    /* Set HDMA window flag ($01:9426-$01:9429) */
     bus_wram_write16(0x0220, 0xFFFF);
 
-    /* Skip Phase 5-6 graphics/transition. The tile loads here conflict
-     * with mp_0087EE which runs later and sets up the correct VRAM state.
-     * Only keep the HDMA window flag. */
+    /*
+     * Phases 5-6 (the title->canvas graphics transition, ROM $01:942C onward)
+     * are not translated. They are also not optional: $01:943E sets
+     * BG12NBA=$06 / BG34NBA=$66, and skipping them left every BG layer reading
+     * tile data from the title screen's $04/$44 base — which is what rendered
+     * the toolbar as garbage.
+     *
+     * Resuming the ROM mid-routine at $01:942C does not work: this function's
+     * recompiled Phases 1-4 leave different DB/DP/flag state than the original
+     * would have, and the tail diverges. So this whole function is currently
+     * NOT registered in the dispatch table (see mp_register_title) and
+     * func_table_call($018000) runs the genuine routine end to end instead.
+     * The body below is kept as the starting point for finishing the
+     * translation; register it again once Phases 5-6 exist.
+     */
     return;
 }
 
@@ -228,5 +240,9 @@ void mp_018000(void) {
  * ======================================================================== */
 void mp_register_title(void) {
     func_table_register(0x00D6D3, mp_00D6D3);
-    func_table_register(0x018000, mp_018000);
+
+    /* $018000 is deliberately NOT registered — its translation stops before
+     * the title->canvas transition (Phases 5-6), which the canvas depends on.
+     * Leaving it out sends func_table_call($018000) to the interpreter, which
+     * runs the genuine routine end to end. See mp_018000 for the details. */
 }

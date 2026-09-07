@@ -605,26 +605,9 @@ void mp_0084D5(void) {
     /* JSR CODE_0087EE */
     func_table_call(0x0087EE);
 
-    /* Fix BG1/BG3 for toolbar visibility.
-     * mp_0087EE fills BG1 with $3DFE (opaque border tile). The canvas area
-     * (rows 3-24) gets overwritten by 0089C3/0089B1, but the bottom toolbar
-     * area (rows 25-31) stays $3DFE which covers BG3. The original game's
-     * CODE_01A18B fills BG1 with $0057 (transparent) first, but since we skip
-     * Phase 5-6, we need to clear the toolbar rows manually. */
-    {
-        uint8_t *wram = bus_get_wram();
-        /* Clear BG1 rows 25-31 (bottom toolbar area) with tile $0000 (transparent) */
-        /* Row 25 starts at $7E2000 + 25*64 = $7E2640 */
-        for (int i = 0; i < 7 * 64; i += 2) {
-            wram[0x2640 + i]     = 0x00;
-            wram[0x2640 + i + 1] = 0x00;
-        }
-        /* Also clear BG2 bottom rows for the same reason */
-        for (int i = 0; i < 7 * 64; i += 2) {
-            wram[0x2E40 + i]     = 0x00;
-            wram[0x2E40 + i + 1] = 0x00;
-        }
-    }
+    /* BG1 rows 25-31 are the bottom tool bar and are left alone. They used to
+     * be zeroed here so BG3 would show through, back when the toolbar was
+     * (wrongly) expected on BG3; that wiped the real bar, which lives on BG1. */
 
     /* Write toolbar icons into BG3 tilemap.
      * $0012 = icon count (15 = full toolbar). Tile $280 at BG3 base $6000
@@ -800,13 +783,10 @@ void mp_0084D5(void) {
     bus_wram_write16(0x0208, 0x0000);
     bus_wram_write16(0x0206, 0x0001);
 
-    /* Enable BG3 for the bottom toolbar.
-     * mp_00837D sets TM=$13 (BG1+BG2+OBJ) but the canvas needs
-     * BG3 enabled for the toolbar: TM=$17 (BG1+BG2+BG3+OBJ). */
-    bus_write8(0x00, 0x212C, 0x17);
-    bus_wram_write8(0x011A, 0x17);
-    bus_write8(0x00, 0x212E, 0x17);
-    bus_wram_write8(0x011C, 0x17);
+    /* TM stays $13 (BG1+BG2+OBJ) — the real ROM runs the canvas with BG3 off
+     * (verified against a real-frame capture). The toolbar is BG1, not BG3;
+     * this used to force TM=$17 to compensate for mp_0089C3 blanking BG1's
+     * toolbar rows, which only drew BG3's leftovers over the top of the screen. */
 
     /* Write BG3 tilemap directly to VRAM $3800 via force blank DMA.
      * This ensures toolbar icons survive any intermediate DMA queue

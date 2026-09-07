@@ -237,6 +237,11 @@ void mp_00A22D(void) {
         bus_write16(0x7E, 0x2640 + y, val);
         src_ofs -= 2;
     }
+
+    /* Push the modified BG1 tilemap to VRAM. Without this the bar is built in
+     * WRAM and never reaches the screen — the boot-time DMA has already run by
+     * the time the first tool is selected, so VRAM keeps the border fill. */
+    mp_01DE97();
 }
 
 /* ========================================================================
