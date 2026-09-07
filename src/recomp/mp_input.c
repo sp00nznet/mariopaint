@@ -21,6 +21,8 @@
 #include <snesrecomp/snesrecomp.h>
 
 #include <string.h>
+#include <stdlib.h>
+#include <snesrecomp/platform.h>
 
 /* Mouse displacement and button state in WRAM */
 #define MOUSE_X_DISP    0x04C6  /* X displacement (8-bit signed magnitude) */
@@ -109,14 +111,38 @@ void mp_01D9E1(void) {
      *   if (disp & 0x80) disp |= 0xFF00  (sign extend to 16-bit)
      */
     /*
-     * Use raw SDL mouse deltas. The SNES mouse displacement is in
-     * SNES pixels; SDL gives window pixels. With 3x window scale,
-     * one SNES pixel ≈ 3 window pixels. We divide by 2 as a
-     * compromise (not too fast, not too slow). The original SNES
-     * mouse has hardware sensitivity settings that we don't emulate.
+     * Cursor tracking.
+     *
+     * The SNES mouse is a relative device: the game integrates displacements
+     * into its own cursor at $04DC/$04DE. Forwarding scaled SDL deltas cannot
+     * stay locked to the host pointer — the old `ms->dx / 2` truncated every
+     * 1-pixel move to zero, so slow movement was silently discarded, and any
+     * motion the game rejects at its cursor bounds (mp_008B48 drops the whole
+     * step rather than clamping) is lost for good. Both errors only accumulate.
+     *
+     * Instead, close the loop: each frame ask where the host pointer is in SNES
+     * pixels and report the displacement that moves the game's cursor there.
+     * Error is recomputed from scratch every frame, so the cursor converges on
+     * the pointer and drift cannot build up. Set MP_MOUSE_RELATIVE=1 to get the
+     * old open-loop behaviour back (useful when comparing against real hardware,
+     * which really is relative).
      */
-    int dx = ms->dx / 2;
-    int dy = ms->dy / 2;
+    int dx, dy;
+    int host_x, host_y;
+    static int s_relative = -1;
+    if (s_relative < 0) s_relative = getenv("MP_MOUSE_RELATIVE") ? 1 : 0;
+
+    if (!s_relative && platform_mouse_to_snes(&host_x, &host_y)) {
+        int cur_x = (int16_t)bus_wram_read16(CURSOR_X);
+        int cur_y = (int16_t)bus_wram_read16(CURSOR_Y);
+        dx = host_x - cur_x;
+        dy = host_y - cur_y;
+    } else {
+        /* Pointer is off the game area (or relative mode): keep the old scaled
+         * deltas so the cursor still responds rather than freezing. */
+        dx = ms->dx / 2;
+        dy = ms->dy / 2;
+    }
 
     /* Clamp to -127..+127 */
     if (dx > 127) dx = 127;
