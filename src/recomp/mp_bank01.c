@@ -686,8 +686,9 @@ void mp_01E6CA(void) {
  *   $012C — repeat rate
  * ======================================================================== */
 void mp_01E747(void) {
-    /* Wait for auto-joypad read to complete
-     * In the recomp, snesrecomp handles this timing — just proceed */
+    /* $01:E747 spins on $4212 bit 0 until the auto-read is done. Native-driven
+     * frames finish it first, so this only waits in the timed loop. */
+    while ((bus_read8(0x00, 0x4212) & 1) && recomp_timed_spin(64)) {}
 
     /* Read all 4 ports */
     for (int x = 6; x >= 0; x -= 2) {

@@ -139,102 +139,49 @@ void mp_01DF25(void) {
 }
 
 /* ========================================================================
- * $01:D308 — Audio command queue write (channel 0)
+ * $01:D308 / $01:D328 / $01:D348 / $01:D368 — APU command queue push
  *
- * Writes A (8-bit) into the channel 0 command queue at $04EC.
- * Queue is circular, 16 bytes, write pointer at $0530.
+ * Channel N keeps a 16-byte ring at $04EC + $10*N with write index $0530+N
+ * and read index $052C+N. The ROM pushes A's low byte, advances the write
+ * index unless that would catch up with the read index (full: the byte is
+ * written but not committed), and returns with A's low byte = the advanced
+ * index. PHX/PHP ... PLP/PLX: X and every flag, M and X included, come back
+ * unchanged, which callers depend on (they continue in 16-bit mode).
  * ======================================================================== */
-void mp_01D308(void) {
-    op_sep(0x30);
-    uint8_t val = CPU_A8();
-    uint8_t wp = bus_wram_read8(0x0530);
-    bus_wram_write8(0x04EC + wp, val);
+static void apu_queue_push(int ch) {
+    uint8_t wp = bus_wram_read8(0x0530 + ch);
+    bus_wram_write8(0x04EC + 0x10 * ch + wp, CPU_A8());
     wp = (wp + 1) & 0x0F;
-    if (wp != bus_wram_read8(0x052C)) {
-        bus_wram_write8(0x0530, wp);
-    }
+    if (wp != bus_wram_read8(0x052C + ch))
+        bus_wram_write8(0x0530 + ch, wp);
+    CPU_SET_A8(wp);
 }
 
-/* ========================================================================
- * $01:D328 — Audio command queue write (channel 1)
- * ======================================================================== */
-void mp_01D328(void) {
-    op_sep(0x30);
-    uint8_t val = CPU_A8();
-    uint8_t wp = bus_wram_read8(0x0531);
-    bus_wram_write8(0x04FC + wp, val);
-    wp = (wp + 1) & 0x0F;
-    if (wp != bus_wram_read8(0x052D)) {
-        bus_wram_write8(0x0531, wp);
-    }
-}
+void mp_01D308(void) { apu_queue_push(0); }
+void mp_01D328(void) { apu_queue_push(1); }
+void mp_01D348(void) { apu_queue_push(2); }
+void mp_01D368(void) { apu_queue_push(3); }
 
 /* ========================================================================
- * $01:D348 — Audio command queue write (channel 2)
- * ======================================================================== */
-void mp_01D348(void) {
-    op_sep(0x30);
-    uint8_t val = CPU_A8();
-    uint8_t wp = bus_wram_read8(0x0532);
-    bus_wram_write8(0x050C + wp, val);
-    wp = (wp + 1) & 0x0F;
-    if (wp != bus_wram_read8(0x052E)) {
-        bus_wram_write8(0x0532, wp);
-    }
-}
-
-/* ========================================================================
- * $01:D368 — Audio command queue write (channel 3)
- * ======================================================================== */
-void mp_01D368(void) {
-    op_sep(0x30);
-    uint8_t val = CPU_A8();
-    uint8_t wp = bus_wram_read8(0x0533);
-    bus_wram_write8(0x051C + wp, val);
-    wp = (wp + 1) & 0x0F;
-    if (wp != bus_wram_read8(0x052F)) {
-        bus_wram_write8(0x0533, wp);
-    }
-}
-
-/* ========================================================================
- * $01:D2BF — Audio command with special handling
+ * $01:D2BF — Channel-0 command that first makes sure the APU is listening
  *
- * Sends a command through channel 0 with additional setup:
- * writes a $02 to channel 2 queue, sets $053A timer, then
- * writes the command to channel 0.
+ * If no command is outstanding ($053A == 0) and channel 0's ring is empty,
+ * queue $02 on channel 2, arm the $20-frame $053A timeout, then push A on
+ * channel 0 as $01:D308 does. Otherwise the byte is written at the read index
+ * (overwriting the next unsent command) and A comes back unchanged.
+ * Registers and flags preserved as in $01:D308.
  * ======================================================================== */
 void mp_01D2BF(void) {
-    op_sep(0x30);
     uint8_t val = CPU_A8();
-
-    /* Check if we can do the special path */
-    if (bus_wram_read8(0x053A) != 0) goto simple;
-    if (bus_wram_read8(0x0530) != bus_wram_read8(0x052C)) goto simple;
-
-    /* Special path: send $02 to channel 2, set timer */
+    if (bus_wram_read8(0x053A) != 0 || bus_wram_read8(0x0530) != bus_wram_read8(0x052C)) {
+        bus_wram_write8(0x04EC + bus_wram_read8(0x052C), val);
+        return;
+    }
     CPU_SET_A8(0x02);
-    mp_01D348();
-
+    apu_queue_push(2);
     bus_wram_write8(0x053A, 0x20);
-
-    /* Write to channel 0 queue */
-    {
-        uint8_t wp = bus_wram_read8(0x0530);
-        bus_wram_write8(0x04EC + wp, val);
-        wp = (wp + 1) & 0x0F;
-        if (wp != bus_wram_read8(0x052C)) {
-            bus_wram_write8(0x0530, wp);
-        }
-    }
-    return;
-
-simple:
-    /* Simple path: just write to channel 0 at read pointer */
-    {
-        uint8_t rp = bus_wram_read8(0x052C);
-        bus_wram_write8(0x04EC + rp, val);
-    }
+    CPU_SET_A8(val);
+    apu_queue_push(0);
 }
 
 /* ========================================================================
@@ -336,58 +283,68 @@ void mp_01DDE1(void) {
 }
 
 /* ========================================================================
- * $01:DE2D — NMI audio: process channels 1-3 commands
+ * $01:DE2D — NMI: send one queued command per APU channel 3..1
  *
- * Similar to DDE1 but processes all three remaining channels
- * (queues at $04FC, $050C, $051C → APU ports 1, 2, 3).
+ * Skipped while $0538 is set. For each channel X (ring at $04EC+$10*X,
+ * indices $052C+X read / $0530+X write, state $0534+X, retries $0541+X):
+ *   ring empty          -> clear APU port X
+ *   idle, port busy     -> wait
+ *   idle, port 0        -> write the command, 4 retries, state = sending
+ *   sending, echoed     -> advance read index, back to idle, clear the port
+ *   sending, no echo    -> rewrite it until retries run out, then as echoed
+ * PHP/PLP around the loop; A returns as the last ring base pulled ($04EC),
+ * X as 0 and Y as channel 1's read index (+1 if it advanced).
  * ======================================================================== */
 void mp_01DE2D(void) {
-    if (bus_wram_read8(0x0538) != 0) return;
-
-    /* Process channels 3, 2, 1 (in that order) */
-    static const uint16_t queue_base[4] = { 0x04EC, 0x04FC, 0x050C, 0x051C };
-
-    for (int ch = 3; ch >= 1; ch--) {
-        uint8_t rp = bus_wram_read8(0x052C + ch);
-        uint8_t wp = bus_wram_read8(0x0530 + ch);
-        if (rp == wp) {
-            /* Queue empty — write 0 to APU port */
-            bus_write8(0x00, REG_APUIO0 + ch, 0x00);
+    uint8_t busy = bus_wram_read8(0x0538);
+    if (busy != 0) {
+        CPU_SET_A8(busy);
+        g_cpu.flag_Z = false;
+        g_cpu.flag_N = (busy & 0x80) != 0;
+        return;
+    }
+    uint8_t y = (uint8_t)g_cpu.Y;
+    for (int x = 3; x >= 1; x--) {
+        uint16_t base = (uint16_t)(0x04EC + 0x10 * x);
+        uint16_t port = (uint16_t)(REG_APUIO0 + x);
+        y = bus_wram_read8(0x052C + x);
+        bool done = false;
+        if (y == bus_wram_read8(0x0530 + x)) {
+            bus_write8(0x00, port, 0x00);
             continue;
         }
-
-        uint8_t sending = bus_wram_read8(0x0534 + ch);
-        uint8_t data = bus_wram_read8(queue_base[ch] + rp);
-
-        if (sending == 0) {
-            /* Check if APU port is ready (reads 0) */
-            uint8_t port_val = bus_read8(0x00, REG_APUIO0 + ch);
-            if (port_val != 0) continue;
-
-            /* Ready — set retry counter and send */
-            bus_wram_write8(0x0541 + ch, 0x04);
-            bus_write8(0x00, REG_APUIO0 + ch, data);
-            bus_wram_write8(0x0534 + ch, 0x01);
+        if (bus_wram_read8(0x0534 + x) == 0) {
+            if (bus_read8(0x00, port) != 0) continue;
+            bus_wram_write8(0x0541 + x, 0x04);
+            bus_write8(0x00, port, bus_wram_read8(base + y));
+            bus_wram_write8(0x0534 + x, 0x01);
+            continue;
+        }
+        uint8_t data = bus_wram_read8(base + y);
+        if (data == bus_read8(0x00, port)) {
+            done = true;
         } else {
-            /* Check acknowledge */
-            uint8_t ack = bus_read8(0x00, REG_APUIO0 + ch);
-            if (ack != data) {
-                /* Retry with countdown */
-                uint8_t retry = bus_wram_read8(0x0541 + ch) - 1;
-                bus_wram_write8(0x0541 + ch, retry);
-                if (retry > 0) {
-                    bus_write8(0x00, REG_APUIO0 + ch, data);
-                    continue;
-                }
+            uint8_t retry = (uint8_t)(bus_wram_read8(0x0541 + x) - 1);
+            bus_wram_write8(0x0541 + x, retry);
+            if (retry == 0) done = true;
+            else {
+                bus_write8(0x00, port, data);
+                bus_wram_write8(0x0534 + x, 0x01);
             }
-
-            /* Acknowledged or retries exhausted — advance */
-            rp = (rp + 1) & 0x0F;
-            bus_wram_write8(0x052C + ch, rp);
-            bus_wram_write8(0x0534 + ch, 0x00);
-            bus_wram_write8(0x0541 + ch, 0x00);
+        }
+        if (done) {
+            y++;
+            bus_wram_write8(0x052C + x, y & 0x0F);
+            bus_wram_write8(0x0534 + x, 0x00);
+            bus_wram_write8(0x0541 + x, 0x00);
+            bus_write8(0x00, port, 0x00);
         }
     }
+    g_cpu.C = 0x04EC;
+    g_cpu.X = 0;
+    g_cpu.Y = g_cpu.flag_X ? y : (uint16_t)((g_cpu.Y & 0xFF00) | y);
+    g_cpu.flag_Z = true;     /* PLP: the flags of LDA $0538 (zero) */
+    g_cpu.flag_N = false;
 }
 
 /* ========================================================================

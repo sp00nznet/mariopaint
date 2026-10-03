@@ -1,10 +1,16 @@
 /*
  * Mario Paint — Static Recompilation
  *
- * Entry point: loads the ROM, configures SNES Mouse on port 1,
- * registers recompiled functions, and runs the boot chain.
+ * Entry point: loads the ROM, configures SNES Mouse on port 1, registers
+ * recompiled functions, and picks one of three modes (docs/architecture.md):
  *
- * Frame architecture:
+ *   default          timed recomp: the genuine ROM in LakeSnes's cycle-timed
+ *                    frame loop, with every function in k_verified running as
+ *                    native C in place of its ROM routine
+ *   MP_REALFRAME=1   no native code: the oracle the harness compares against
+ *   MP_NATIVE=1      the native-driven boot chain below, interpreter fallback
+ *
+ * Native-driven frame architecture:
  *   mp_01E2CE (frame sync) is the frame driver. Whenever game code
  *   calls it — during init, the main loop, or fade effects — it
  *   drives one complete frame cycle:
@@ -35,9 +41,47 @@
 /* Global quit flag — set by mp_01E2CE when window is closed */
 bool g_quit = false;
 
+/*
+ * Recompiled functions that pass tools/conformance.py: every checked call
+ * byte-identical to the ROM (WRAM, VRAM, CGRAM, OAM), none skipped. These run
+ * natively by default. Regenerate with conformance.py (scratch/conf/verified.txt)
+ * and paste; never add a function here that has not passed.
+ */
+static const char k_verified[] =
+    "00815B,008187,0081CA,00823C,00833B,00837D,00849D,008683L,"
+    "0089B1,0089C3,008A39,008B48,0091C7,0096AB,009D7D,00B051,"
+    "00B0D3,00B305,00B66C,00BA78,00C414,00F921,0182B1,0182F6,"
+    "019DFEL,01D2BFL,01D308L,01D348L,01D368L,01D56DL,01D9E1L,01DCB9L,"
+    "01DDB8L,01DDE1L,01DE2DL,01DECDL,01DFD3L,01E042L,01E06FL,01E09BL,"
+    "01E103L,01E1ABL,01E20CL,01E238L,01E2F3L,01E30EL,01E429L,01E460L,"
+    "01E500L,01E59BL,01E60CL,01E66BL,01E747L,01E87BL,01E88AL,01E8F6L,"
+    "0FC000L";
+
+/* "01D9E1L,008B48" -> fn(addr, is_long) for each; suffix L = returns with RTL. */
+static void add_addr_list(const char *list, void (*fn)(uint32_t, bool)) {
+    while (list && *list) {
+        char *end;
+        unsigned long addr = strtoul(list, &end, 16);
+        if (end == list) break;
+        bool is_long = (*end == 'L' || *end == 'l');
+        if (is_long) end++;
+        fn((uint32_t)addr, is_long);
+        list = (*end == ',') ? end + 1 : end;
+    }
+}
+
+#ifdef MP_HAVE_GEN
+void gen_register_all(void);
+#endif
+
+static void dump_profile(void) {
+    recomp_timed_profile_dump(atoi(getenv("MP_PROFILE")));
+}
+
 int main(int argc, char *argv[]) {
+    argc = snesrecomp_parse_args(argc, argv);   /* --headless, --record out.mp4 */
     if (argc < 2) {
-        fprintf(stderr, "Usage: %s <mario_paint.sfc>\n", argv[0]);
+        fprintf(stderr, "Usage: %s [--headless] [--record out.mp4] <mario_paint.sfc>\n", argv[0]);
         return 1;
     }
 
@@ -56,9 +100,17 @@ int main(int argc, char *argv[]) {
 
     /* Configure port 1 as SNES Mouse (Mario Paint requires it) */
     recomp_input_set_device(1, SNES_INPUT_MOUSE);
+    /* Cursor X/Y, so scripted "@x:@y" mouse steps steer the genuine ROM too. */
+    recomp_input_set_mouse_cursor_addr(0x04DC, 0x04DE);
 
     /* Register all recompiled functions */
     mp_register_all();
+#ifdef MP_HAVE_GEN
+    /* Generated routines (gen/, from your ROM) are not validated yet, so they
+     * are opt-in: MP_GEN=1 registers them over the hand-ports at the same
+     * addresses. */
+    if (getenv("MP_GEN")) gen_register_all();
+#endif
 
     /* Anything not yet recompiled runs the original ROM code on the
      * LakeSnes CPU instead of silently doing nothing. */
@@ -84,15 +136,39 @@ int main(int argc, char *argv[]) {
     }
 
     /*
-     * Real-frame mode (MP_REALFRAME=1): run the genuine ROM through LakeSnes's
-     * full cycle-accurate frame instead of the recompiled boot chain. No
-     * recompiled code participates. This is the ground truth to validate the
-     * recomp against — capture the same frame both ways and diff. It is also
-     * the only way to reach screens the recomp can't drive yet (the music
-     * composer, Gnat Attack), since the real CPU handles their state machines.
+     * Timed loop (default, MP_REALFRAME=1, MP_TIMED, MP_VALIDATE): LakeSnes runs
+     * the genuine ROM cycle-accurately; native bodies replace ROM routines at
+     * their entry through the opcode hook. MP_REALFRAME=1 alone is the ground
+     * truth the recomp is validated against.
      */
-    if (getenv("MP_REALFRAME")) {
-        printf("Mario Paint recomp: real-frame mode (genuine ROM via LakeSnes)\n");
+    if (!getenv("MP_NATIVE")) {
+        bool real = getenv("MP_REALFRAME") != NULL;
+        printf("Mario Paint recomp: %s\n", real ? "real-frame mode (genuine ROM, no native code)"
+                                                : "timed recomp (verified functions native)");
+        if (!real && !getenv("MP_VALIDATE") && !getenv("MP_TIMED"))
+            add_addr_list(k_verified, recomp_timed_add_intercept);
+        /*
+         * MP_TIMED="01D9E1L,008B48" — run exactly these natively instead of
+         * k_verified (suffix L = returns with RTL). Add MP_REALFRAME=1 to start
+         * from no native code at all.
+         *
+         * MP_VALIDATE="..." (same format) — lockstep validation instead: every
+         * call runs the native body on a saved copy of the machine and compares
+         * it with the genuine routine, which is what actually runs. Reports one
+         * VALIDATE line per function at exit.
+         *
+         * MP_PROFILE=N — at exit, dump the N hottest JSR/JSL targets with the
+         * M/X flags they are entered with (what to recompile next).
+         */
+        add_addr_list(getenv("MP_TIMED"), recomp_timed_add_intercept);
+        add_addr_list(getenv("MP_VALIDATE"), recomp_timed_add_validate);
+        if (getenv("MP_VALIDATE")) atexit(recomp_timed_validate_report);
+        if (!real || getenv("MP_TIMED") || getenv("MP_VALIDATE") || getenv("MP_PROFILE"))
+            recomp_timed_recomp_enable();
+        if (getenv("MP_PROFILE")) {
+            recomp_timed_profile_enable();
+            atexit(dump_profile);
+        }
         while (snesrecomp_realframe_begin())
             snesrecomp_realframe_end();
         snesrecomp_shutdown();

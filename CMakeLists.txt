@@ -39,6 +39,14 @@ add_library(mp_game STATIC
 )
 target_link_libraries(mp_game PUBLIC snesrecomp)
 
+# Generated routines (tools/gen.py -> gen/mp_gen.c, from your own ROM). Never
+# committed: gen/ is gitignored. Without it the build uses hand-ports only.
+if(EXISTS ${CMAKE_SOURCE_DIR}/gen/mp_gen.c)
+    target_sources(mp_game PRIVATE ${CMAKE_SOURCE_DIR}/gen/mp_gen.c)
+    target_compile_definitions(mp_game PUBLIC MP_HAVE_GEN=1)
+    message(STATUS "mariopaint: using generated routines from gen/mp_gen.c")
+endif()
+
 # --- mp_launcher (executable) ---
 add_executable(mp_launcher src/main/main.c)
 target_link_libraries(mp_launcher PRIVATE

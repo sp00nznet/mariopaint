@@ -1,0 +1,31 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  windows:
+    runs-on: windows-2022
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: SDL2 via vcpkg
+        run: |
+          vcpkg install sdl2:x64-windows
+          echo "VCPKG_TOOLCHAIN=$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake" >> $env:GITHUB_ENV
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_TOOLCHAIN"
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      # The ROM cannot be distributed, so conformance (tools/conformance.py)
+      # runs locally only; see docs/harness.md. CI proves the tree builds.
+      - name: Conformance
+        run: echo "Skipped in CI - needs a user-supplied ROM. Run py tools/conformance.py <rom> locally."

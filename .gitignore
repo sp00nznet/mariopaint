@@ -25,3 +25,18 @@ screenshot_*.png
 *.png.bak
 ppudump.txt
 _recovered/
+
+# Per-machine menu settings written by snesrecomp
+*.ini
+
+# Harness output (canvas_tour.py / conformance.py) and save states
+scratch/
+*.snap
+*.ppu.txt
+*.sav
+*.mp4
+
+# Generated recompiler output — never committed (the tool ships, the output doesn't)
+gen/
+
+__pycache__/

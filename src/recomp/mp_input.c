@@ -9,9 +9,9 @@
  * Cursor movement (per frame, from main loop):
  *   mp_008B48 — applies mouse displacement to cursor position
  *
- * The original 65816 code reads mouse data bit-by-bit from the
- * serial port ($4016). We use the snesrecomp mouse API directly
- * for reliability.
+ * mp_01D9E1 clocks the mouse serially out of $4016 exactly as the ROM does;
+ * snesrecomp keeps the cursor locked to the host pointer by choosing the
+ * deltas it reports (see recomp_input_set_mouse_cursor_addr in main.c).
  *
  * Reference: Yoshifanatic1/Mario-Paint-Disassembly
  */
@@ -59,196 +59,122 @@
 #define REPEAT_P1        0x0142
 
 /* ========================================================================
- * $01:D9E1 — Mouse data read + button state computation
+ * $01:D9E1 — Mouse read (NMI). Straight translation of $01:D9E1-$01:DB30.
  *
- * Called from NMI handler. Reads mouse displacement and buttons,
- * computes the button bitfield at $04CA.
+ * For each port (X = 1, then 0): if the auto-read signature nibble at
+ * $4218+2X says "mouse", clock 16 more bits out of $4016+X into the Y/X
+ * displacement bytes, convert them to two's complement, fold the auto-read
+ * buttons ($0132/$013A/$0142 = held/pressed/repeat, built by $01:E747) into
+ * $04CA+X, flag a double-click, and nudge the mouse's speed setting toward
+ * $04C4+X.
  *
- * Original code reads serial port bit-by-bit. We use the snesrecomp
- * mouse API instead for direct access to dx/dy/buttons.
+ * $04CA layout (bit 6 of $4218 is Left, bit 7 is Right):
+ *   bit 4/5/6  left  held / pressed / double-click
+ *   bit 0/1/2  right held / pressed / double-click
+ *
+ * Cursor locking to the host pointer happens in snesrecomp (main.c registers
+ * the cursor address), so this routine can stay faithful to the ROM.
  * ======================================================================== */
+
+/* $01:DABF — second press of the same button within $20 frames, without the
+ * mouse moving in between, sets that button's double-click bit. */
+static void mp_01DABF(int x) {
+    uint8_t timer = bus_wram_read8(MOUSE_BTN_TIMER + x);
+    uint8_t btn   = bus_wram_read8(MOUSE_BUTTONS + x);
+    if (timer == 0) {
+        if (btn & 0x22) {
+            bus_wram_write8(MOUSE_BTN_PREV + x, btn & 0x22);
+            bus_wram_write8(MOUSE_BTN_TIMER + x, 0x20);
+        }
+        return;
+    }
+    if ((bus_wram_read8(MOUSE_X_DISP + x) | bus_wram_read8(MOUSE_Y_DISP + x)) == 0) {
+        bus_wram_write8(MOUSE_BTN_TIMER + x, timer - 1);
+        uint8_t match = btn & 0x22 & bus_wram_read8(MOUSE_BTN_PREV + x);
+        if (!match) return;
+        bus_wram_write8(MOUSE_BUTTONS + x, btn | (uint8_t)(match << 2));
+    }
+    bus_wram_write8(MOUSE_BTN_TIMER + x, 0);
+    bus_wram_write8(MOUSE_BTN_PREV + x, 0);
+}
+
+/* $01:DAF9 — cycle the mouse's sensitivity until it matches $04C4+X. Each
+ * $01:DB25 strobe steps the speed; gives up after $1F tries. */
+static void mp_01DAF9(int x) {
+    for (;;) {
+        uint8_t speed = (bus_read8(0x00, 0x4218 + 2 * x) >> 4) & 3;
+        if (speed == bus_wram_read8(MOUSE_SPEED_SAVE + x)) break;
+        uint8_t ctr = bus_wram_read8(MOUSE_SPEED_CTR);
+        if (ctr & 0x80) ctr = 0x20;
+        bus_wram_write8(MOUSE_SPEED_CTR, --ctr);
+        if (ctr == 0) break;
+        bus_write8(0x00, 0x4016, 1);                 /* $01:DB25 */
+        bus_read8(0x00, 0x4016 + x);
+        bus_write8(0x00, 0x4016, 0);
+    }
+    bus_wram_write8(MOUSE_SPEED_CTR, 0xFF);
+}
+
+/* $01:DA73 — sign-magnitude displacement byte to two's complement. */
+static void mp_01DA73(uint16_t addr) {
+    uint8_t v = bus_wram_read8(addr);
+    bus_wram_write8(addr, (v & 0x80) ? (uint8_t)(-(v & 0x7F)) : (uint8_t)(v & 0x7F));
+}
+
 void mp_01D9E1(void) {
-    /* Reentrancy guard */
     if (bus_wram_read8(MOUSE_ACTIVE) != 0) return;
     bus_wram_write8(MOUSE_ACTIVE, 0x01);
 
-    /* Check if mouse is enabled */
     if (bus_wram_read8(MOUSE_ENABLE) == 0) {
-        /* Mouse disabled — clear all mouse state */
-        bus_wram_write8(MOUSE_BUTTONS, 0x00);
-        bus_wram_write8(MOUSE_X_DISP, 0x00);
-        bus_wram_write8(MOUSE_Y_DISP, 0x00);
-        bus_wram_write8(MOUSE_BUTTONS_HI, 0x00);
-        bus_wram_write8(MOUSE_X_DISP_HI, 0x00);
-        bus_wram_write8(MOUSE_Y_DISP_HI, 0x00);
+        for (int i = 0; i < 2; i++) {
+            bus_wram_write8(MOUSE_BUTTONS + i, 0);
+            bus_wram_write8(MOUSE_X_DISP + i, 0);
+            bus_wram_write8(MOUSE_Y_DISP + i, 0);
+        }
         bus_wram_write8(MOUSE_ACTIVE, 0x00);
         return;
     }
 
-    /* Get mouse state from snesrecomp */
-    SnesMouseState *ms = recomp_input_get_mouse(1);
-
-    if (ms == NULL) {
-        /* No mouse on port 1 — clear state */
-        bus_wram_write8(MOUSE_BUTTONS, 0x00);
-        bus_wram_write8(MOUSE_X_DISP, 0x00);
-        bus_wram_write8(MOUSE_Y_DISP, 0x00);
-        bus_wram_write8(MOUSE_ACTIVE, 0x00);
-        return;
+    /* $01:DA0D — wait out the auto-read before touching $4218 or $4016.
+     * Native-driven frames finish it before NMI, so this only spins in the
+     * timed loop. */
+    while ((bus_read8(0x00, 0x4212) & 1) && recomp_timed_spin(64)) {}
+    bus_wram_write8(MOUSE_DETECT, 0);
+    for (int i = 0; i < 2; i++) {
+        bus_wram_write8(MOUSE_X_DISP + i, 0);
+        bus_wram_write8(MOUSE_Y_DISP + i, 0);
+        bus_wram_write8(MOUSE_BUTTONS + i, 0);
     }
-
-    /* Mark mouse detected on port 1 */
-    bus_wram_write8(MOUSE_DETECT, 0x01);
-
-    /*
-     * Convert SDL mouse delta to SNES mouse format.
-     *
-     * SNES mouse displacement is signed magnitude:
-     *   bit 7 = direction (1 = left/up, 0 = right/down)
-     *   bits 6-0 = magnitude (0-127)
-     *
-     * Mario Paint reads this and uses bit 7 as sign extend:
-     *   if (disp & 0x80) disp |= 0xFF00  (sign extend to 16-bit)
-     */
-    /*
-     * Cursor tracking.
-     *
-     * The SNES mouse is a relative device: the game integrates displacements
-     * into its own cursor at $04DC/$04DE. Forwarding scaled SDL deltas cannot
-     * stay locked to the host pointer — the old `ms->dx / 2` truncated every
-     * 1-pixel move to zero, so slow movement was silently discarded, and any
-     * motion the game rejects at its cursor bounds (mp_008B48 drops the whole
-     * step rather than clamping) is lost for good. Both errors only accumulate.
-     *
-     * Instead, close the loop: each frame ask where the host pointer is in SNES
-     * pixels and report the displacement that moves the game's cursor there.
-     * Error is recomputed from scratch every frame, so the cursor converges on
-     * the pointer and drift cannot build up. Set MP_MOUSE_RELATIVE=1 to get the
-     * old open-loop behaviour back (useful when comparing against real hardware,
-     * which really is relative).
-     */
-    int dx, dy;
-    int host_x, host_y;
-    static int s_relative = -1;
-    if (s_relative < 0) s_relative = getenv("MP_MOUSE_RELATIVE") ? 1 : 0;
-
-    if (!s_relative && platform_mouse_to_snes(&host_x, &host_y)) {
-        int cur_x = (int16_t)bus_wram_read16(CURSOR_X);
-        int cur_y = (int16_t)bus_wram_read16(CURSOR_Y);
-        dx = host_x - cur_x;
-        dy = host_y - cur_y;
-    } else {
-        /* Pointer is off the game area (or relative mode): keep the old scaled
-         * deltas so the cursor still responds rather than freezing. */
-        dx = ms->dx / 2;
-        dy = ms->dy / 2;
-    }
-
-    /* Clamp to -127..+127 */
-    if (dx > 127) dx = 127;
-    if (dx < -127) dx = -127;
-    if (dy > 127) dy = 127;
-    if (dy < -127) dy = -127;
-
-    /* Convert to SNES signed-magnitude format */
-    uint8_t snes_dx, snes_dy;
-    if (dx < 0) {
-        snes_dx = 0x80 | (uint8_t)(-dx);
-    } else {
-        snes_dx = (uint8_t)dx;
-    }
-    if (dy < 0) {
-        snes_dy = 0x80 | (uint8_t)(-dy);
-    } else {
-        snes_dy = (uint8_t)dy;
-    }
-
-    bus_wram_write8(MOUSE_X_DISP, snes_dx);
-    bus_wram_write8(MOUSE_Y_DISP, snes_dy);
-
-    /*
-     * Build button state at $04CA.
-     *
-     * SNES mouse auto-joypad format (bits 0-15 of 32-bit serial):
-     *   Bits 0-7:  Signature ($00 = mouse)
-     *   Bit  8:    Right button
-     *   Bit  9:    Left button
-     *   Bits 10-11: Speed/sensitivity
-     *   Bits 12-15: Unused
-     *
-     * The $04CA bitfield layout (from the disassembly):
-     *   bit 0: left held
-     *   bit 1: left pressed (new this frame)
-     *   bit 2: left repeat
-     *   bit 3: (unused)
-     *   bit 4: right held (or left pressed in some contexts)
-     *   bit 5: right held (triggers click actions)
-     *
-     * We read directly from the snesrecomp mouse state since
-     * auto-joypad has mouse-format bits, not joypad-format bits.
-     */
-    uint8_t btn = 0;
-
-    /* Current frame button state */
-    bool left_held = ms->left;
-    bool right_held = ms->right;
-
-    /* Previous frame state for pressed detection */
-    static bool prev_left = false;
-    static bool prev_right = false;
-
-    bool left_pressed = left_held && !prev_left;
-    bool right_pressed = right_held && !prev_right;
-
-    /* Build the $04CA bitfield matching what the original game expects:
-     * Bit 0: left held       (used for draw-while-held checks)
-     * Bit 1: left pressed    (new click this frame)
-     * Bit 4: left held       (used for "button held" checks in draw logic)
-     * Bit 5: left pressed    (used for "click" checks — toolbar, palette)
-     * Right button: bit 1 of high nibble area */
-    if (left_held)    btn |= 0x11;  /* bits 0 and 4: held */
-    if (left_pressed) btn |= 0x22;  /* bits 1 and 5: pressed/click */
-    if (right_held)   btn |= 0x02;  /* bit 1: right held */
-    if (right_pressed) btn |= 0x04; /* bit 2: right pressed */
-
-    prev_left = left_held;
-    prev_right = right_held;
-
-    /* Button repeat/hold logic (from CODE_01DABF) */
-    uint8_t prev_btn = bus_wram_read8(MOUSE_BTN_PREV);
-    uint8_t timer = bus_wram_read8(MOUSE_BTN_TIMER);
-
-    if (timer == 0) {
-        /* No active hold — check for new button press */
-        uint8_t held_mask = btn & 0x22;  /* held bits for left+right */
-        if (held_mask != 0) {
-            bus_wram_write8(MOUSE_BTN_PREV, held_mask);
-            bus_wram_write8(MOUSE_BTN_TIMER, 0x20);
+    for (int x = 1; x >= 0; x--) {
+        uint8_t sig = bus_read8(0x00, 0x4218 + 2 * x);
+        bus_wram_write8(0x00DE, sig);
+        if ((sig & 0x0F) != 0x01) {
+            bus_wram_write8(MOUSE_BTN_PREV + x, 0);
+            bus_wram_write8(MOUSE_BTN_TIMER + x, 0);
+            continue;
         }
-    } else {
-        /* Timer active */
-        if (snes_dx != 0 || snes_dy != 0) {
-            /* Mouse moved — cancel repeat */
-            bus_wram_write8(MOUSE_BTN_TIMER, 0x00);
-            bus_wram_write8(MOUSE_BTN_PREV, 0x00);
-        } else {
-            timer--;
-            bus_wram_write8(MOUSE_BTN_TIMER, timer);
-            uint8_t held_mask = btn & 0x22;
-            uint8_t matched = held_mask & prev_btn;
-            if (timer == 0 && matched != 0) {
-                /* Fire repeat: promote held to repeat bits */
-                btn |= (matched << 2);
-            }
-        }
+        bus_wram_write8(MOUSE_DETECT, bus_wram_read8(MOUSE_DETECT) | (uint8_t)(1 << x));
+
+        /* 16 serial bits: first 8 land in $04C8+X (Y), next 8 in $04C6+X (X). */
+        uint16_t bits = 0;
+        for (int i = 0; i < 16; i++)
+            bits = (uint16_t)((bits << 1) | (bus_read8(0x00, 0x4016 + x) & 1));
+        bus_wram_write8(MOUSE_Y_DISP + x, (uint8_t)(bits >> 8));
+        bus_wram_write8(MOUSE_X_DISP + x, (uint8_t)bits);
+        mp_01DA73(MOUSE_X_DISP + x);
+        mp_01DA73(MOUSE_Y_DISP + x);
+
+        /* $01:DA88 */
+        uint8_t held = bus_wram_read8(HELD_P1 + 2 * x);
+        uint8_t pres = bus_wram_read8(PRESSED_P1 + 2 * x);
+        uint8_t rept = bus_wram_read8(REPEAT_P1 + 2 * x);
+        uint8_t btn = (uint8_t)(((rept >> 6) & 1) << 6 | ((pres >> 6) & 1) << 5 | ((held >> 6) & 1) << 4 |
+                                ((rept >> 7) & 1) << 2 | ((pres >> 7) & 1) << 1 | ((held >> 7) & 1));
+        bus_wram_write8(MOUSE_BUTTONS + x, btn);
+        mp_01DABF(x);
+        mp_01DAF9(x);
     }
 
-    bus_wram_write8(MOUSE_BUTTONS, btn);
-
-    /* Save mouse speed */
-    bus_wram_write8(MOUSE_SPEED_SAVE, ms->speed);
-
-    /* Clear reentrancy guard */
     bus_wram_write8(MOUSE_ACTIVE, 0x00);
 }
 
@@ -320,125 +246,82 @@ void mp_008187(void) {
 }
 
 /* ========================================================================
- * $00:81CA — Bomb icon animation
- *
- * Animates the bomb icon tile in VRAM when $058D is nonzero.
- * Writes 6 bytes to VRAM tilemap at $3321-$3322.
+ * Toolbar icon animators. Both write a 6-byte frame from a ROM table as
+ * three tilemap bytes at VRAM word vaddr and three at vaddr+1 (VMAIN=$01,
+ * low bytes only). The table address goes through PHY ... PLY and PLP then
+ * restores P, so Y returns holding the table address (low byte only while X
+ * is 8-bit) and A's low byte is the last tile written.
  * ======================================================================== */
-void mp_0081CA(void) {
-    if (bus_wram_read8(0x058D) == 0) return;
-
-    /* Three animation frames of 6 tile bytes each */
-    static const uint8_t bomb_normal[6]  = { 0xEC, 0xDC, 0xDD, 0xFC, 0xFD, 0xED };
-    static const uint8_t bomb_blink1[6]  = { 0xEA, 0xDA, 0xDB, 0xFA, 0xFB, 0xEB };
-    static const uint8_t bomb_blink2[6]  = { 0xE8, 0xD8, 0xD9, 0xF8, 0xF9, 0xE9 };
-
-    const uint8_t *data = bomb_normal;
-    if ((int8_t)bus_wram_read8(0x058D) >= 0) {
-        /* Positive: alternate between blink frames based on frame counter */
-        data = bomb_blink1;
-        if (bus_wram_read8(0x016C) & 0x08) {
-            data = bomb_blink2;
+static void icon_frame(uint16_t vaddr, uint16_t rom_tbl) {
+    bus_write8(0x00, 0x2115, 0x01);
+    for (int row = 0; row < 2; row++) {
+        bus_write8(0x00, 0x2116, (uint8_t)(vaddr + row));
+        bus_write8(0x00, 0x2117, (uint8_t)((vaddr + row) >> 8));
+        for (int i = 0; i < 3; i++) {
+            uint8_t t = bus_read8(0x00, rom_tbl + row * 3 + i);
+            bus_write8(0x00, 0x2118, t);
+            CPU_SET_A8(t);
         }
     }
-
-    /* Write 3 tiles to VRAM row at $3321 */
-    bus_write8(0x00, 0x2115, 0x01);  /* VMAIN: increment after high byte */
-    bus_write8(0x00, 0x2116, 0x21);  /* VMADDL */
-    bus_write8(0x00, 0x2117, 0x33);  /* VMADDH */
-    bus_write8(0x00, 0x2118, data[0]);
-    bus_write8(0x00, 0x2118, data[1]);
-    bus_write8(0x00, 0x2118, data[2]);
-
-    /* Write 3 tiles to next row at $3322 */
-    bus_write8(0x00, 0x2116, 0x22);
-    bus_write8(0x00, 0x2117, 0x33);
-    bus_write8(0x00, 0x2118, data[3]);
-    bus_write8(0x00, 0x2118, data[4]);
-    bus_write8(0x00, 0x2118, data[5]);
+    g_cpu.Y = g_cpu.flag_X ? (rom_tbl & 0xFF) : rom_tbl;
 }
 
-/* ========================================================================
- * $00:823C — Display animation
- *
- * Animates a display icon when in certain tool modes.
- * Similar to bomb animation but at VRAM $3329-$332A.
- * ======================================================================== */
+/* $00:81CA — Eraser bomb icon. $058D == 0: nothing. Negative: the still frame
+ * ($00:822A). Positive: blink between $00:8230 and $00:8236 on bit 3 of the
+ * frame counter $016C. */
+void mp_0081CA(void) {
+    uint8_t st = bus_wram_read8(0x058D);
+    CPU_SET_A8(st);
+    g_cpu.flag_Z = st == 0;
+    g_cpu.flag_N = (st & 0x80) != 0;
+    if (st == 0) return;
+    uint16_t tbl = 0x822A;
+    if (!(st & 0x80))
+        tbl = (bus_wram_read8(0x016C) & 0x08) ? 0x8236 : 0x8230;
+    icon_frame(0x3321, tbl);
+}
+
+/* $00:823C — Animated icon shown while tool $AA == 7 and $0589 == 0:
+ * $00:829B / $00:82A1 alternating on bit 4 of $016C. */
 void mp_00823C(void) {
-    if (bus_wram_read8(0x0589) != 0) return;
-    if (bus_wram_read8(0x00AA) != 0x07) return;
-
-    static const uint8_t disp_frame1[6] = { 0x86, 0x76, 0x77, 0x96, 0x97, 0x87 };
-    static const uint8_t disp_frame2[6] = { 0x88, 0x78, 0x79, 0x98, 0x99, 0x89 };
-
-    const uint8_t *data = disp_frame1;
-    if (bus_wram_read8(0x016C) & 0x10) {
-        data = disp_frame2;
+    uint8_t v = bus_wram_read8(0x0589);
+    if (v == 0) {
+        v = bus_wram_read8(0x00AA);
+        g_cpu.flag_C = v >= 0x07;
+        if (v == 0x07) {
+            g_cpu.flag_Z = true; g_cpu.flag_N = false;
+            icon_frame(0x3329, (bus_wram_read8(0x016C) & 0x10) ? 0x82A1 : 0x829B);
+            return;
+        }
+        CPU_SET_A8(v);
+        g_cpu.flag_Z = false;
+        g_cpu.flag_N = (uint8_t)(v - 0x07) & 0x80;
+        return;
     }
-
-    bus_write8(0x00, 0x2115, 0x01);
-    bus_write8(0x00, 0x2116, 0x29);
-    bus_write8(0x00, 0x2117, 0x33);
-    bus_write8(0x00, 0x2118, data[0]);
-    bus_write8(0x00, 0x2118, data[1]);
-    bus_write8(0x00, 0x2118, data[2]);
-
-    bus_write8(0x00, 0x2116, 0x2A);
-    bus_write8(0x00, 0x2117, 0x33);
-    bus_write8(0x00, 0x2118, data[3]);
-    bus_write8(0x00, 0x2118, data[4]);
-    bus_write8(0x00, 0x2118, data[5]);
+    CPU_SET_A8(v);
+    g_cpu.flag_Z = false;
+    g_cpu.flag_N = (v & 0x80) != 0;
 }
 
 /* ========================================================================
- * $00:8B48 — Cursor movement
+ * $00:8B48 — Apply the mouse displacement to the cursor.
  *
- * Applies mouse X/Y displacement to cursor position,
- * clamping to the configured screen bounds.
- * Also tracks whether the cursor moved (for button repeat logic).
+ * $04C6/$04C8 are two's complement here ($01:D9E1 converted them). A step
+ * that would leave [$04D4,$04D6) / [$04D8,$04DA) is dropped, not clamped.
+ * $1B26/$1B28 get 1 (moved) or 4 (still), with bit 1 set on the edge.
  * ======================================================================== */
 void mp_008B48(void) {
-    /* Read X displacement — signed magnitude to two's complement */
-    uint8_t raw_dx = bus_wram_read8(MOUSE_X_DISP);
-    int16_t dx = raw_dx & 0x7F;
-    if (raw_dx & 0x80) dx = -dx;  /* bit 7 = left */
+    int16_t cx = (int16_t)(bus_wram_read16(CURSOR_X) + (int8_t)bus_wram_read8(MOUSE_X_DISP));
+    if ((int16_t)(cx - bus_wram_read16(CURSOR_X_MAX)) < 0 && (int16_t)(cx - bus_wram_read16(CURSOR_X_MIN)) >= 0)
+        bus_wram_write16(CURSOR_X, (uint16_t)cx);
+    int16_t cy = (int16_t)(bus_wram_read16(CURSOR_Y) + (int8_t)bus_wram_read8(MOUSE_Y_DISP));
+    if ((int16_t)(cy - bus_wram_read16(CURSOR_Y_MAX)) < 0 && (int16_t)(cy - bus_wram_read16(CURSOR_Y_MIN)) >= 0)
+        bus_wram_write16(CURSOR_Y, (uint16_t)cy);
 
-    /* Apply to cursor X */
-    int16_t cx = (int16_t)bus_wram_read16(CURSOR_X);
-    int16_t new_cx = cx + dx;
-    int16_t x_max = (int16_t)bus_wram_read16(CURSOR_X_MAX);
-    int16_t x_min = (int16_t)bus_wram_read16(CURSOR_X_MIN);
-    if (new_cx < x_max && new_cx >= x_min) {
-        bus_wram_write16(CURSOR_X, (uint16_t)new_cx);
-    }
-
-    /* Read Y displacement — signed magnitude to two's complement */
-    uint8_t raw_dy = bus_wram_read8(MOUSE_Y_DISP);
-    int16_t dy = raw_dy & 0x7F;
-    if (raw_dy & 0x80) dy = -dy;  /* bit 7 = up */
-
-    /* Apply to cursor Y */
-    int16_t cy = (int16_t)bus_wram_read16(CURSOR_Y);
-    int16_t new_cy = cy + dy;
-    int16_t y_max = (int16_t)bus_wram_read16(CURSOR_Y_MAX);
-    int16_t y_min = (int16_t)bus_wram_read16(CURSOR_Y_MIN);
-    if (new_cy < y_max && new_cy >= y_min) {
-        bus_wram_write16(CURSOR_Y, (uint16_t)new_cy);
-    }
-
-    /* Track cursor movement for button repeat logic.
-     * Y = 4 if no movement, Y = 1 if cursor moved. */
-    uint16_t moved_y = 0x0004;
-    if ((raw_dx & 0x7F) != 0 || (raw_dy & 0x7F) != 0) {
-        moved_y = 0x0001;
-    }
-
-    /* Update $1B26/$1B28 movement detection state */
-    uint16_t prev = bus_wram_read16(0x1B28);
-    uint16_t edge = (moved_y ^ prev) & moved_y;
-    uint16_t combined = (edge << 1) | moved_y;
-    bus_wram_write16(0x1B26, combined);
-    bus_wram_write16(0x1B28, moved_y);
+    uint16_t moved = (bus_wram_read8(MOUSE_X_DISP) | bus_wram_read8(MOUSE_Y_DISP)) ? 1 : 4;
+    uint16_t v = (uint16_t)((((moved ^ bus_wram_read16(0x1B28)) & moved) << 1) | moved);
+    bus_wram_write16(0x1B26, v);
+    bus_wram_write16(0x1B28, v);
 }
 
 /* ========================================================================
