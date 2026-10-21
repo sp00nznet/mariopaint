@@ -33,6 +33,7 @@
 #include <snesrecomp/platform.h>
 #include <snesrecomp/cpu_ops.h>
 #include <mp/functions.h>
+#include <SDL.h>   /* SDL2main: renames main to SDL_main (mingw links need it) */
 
 #include <stdio.h>
 #include <stdlib.h>

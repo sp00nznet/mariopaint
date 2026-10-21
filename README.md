@@ -7,8 +7,8 @@ A native PC port of Mario Paint (SNES, 1992) by static recompilation: the game's
 
 Part of the sp00nznet recomp family and follows its shared house style (layout,
 CLI flags, headless harness, conformance reporting); see snesrecomp for the
-toolkit. The toolkit changes this build needs are in review as snesrecomp
-#1-#5 and LakeSnes #1; the submodule pins their branch.
+toolkit. The toolkit changes this build needs (snesrecomp #1-#5, LakeSnes #1)
+are merged, and the submodule pins snesrecomp `main`.
 
 ## Status
 
@@ -161,7 +161,8 @@ Linux and macOS builds are untested.
 
 ## Contributors
 
-No outside contributions yet. See [CONTRIBUTING.md](CONTRIBUTING.md).
+People who reported issues or sent fixes are credited in
+[CONTRIBUTORS.md](CONTRIBUTORS.md). To help, see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 

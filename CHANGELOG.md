@@ -8,8 +8,8 @@ versions follow SemVer once the first one is tagged.
 ### Added
 - `--headless` and `--record out.mp4`: run with no window, audio or pacing, and
   optionally pipe frames to ffmpeg.
-- Needs snesrecomp #1-#5 (stacked: headless/record, mouse pointer steering,
-  lockstep validation, LakeSnes mouse-button bump, autogen) and LakeSnes #1.
+- Needs snesrecomp #1-#5 (headless/record, mouse pointer steering, lockstep
+  validation, LakeSnes mouse-button bump, autogen) and LakeSnes #1, all merged.
 - `tools/canvas_tour.py`: drives the title click and every canvas bottom-bar
   button headlessly, on the recompiled build or the genuine ROM (`--real`).
 - `tools/conformance.py`: lockstep-validates every recompiled function the tour
@@ -27,6 +27,9 @@ versions follow SemVer once the first one is tagged.
 - `docs/harness.md`, `CHANGELOG.md`, `ROADMAP.md`, `CONTRIBUTING.md`.
 
 ### Changed
+- snesrecomp submodule moved from the `feat/autogen` branch to `main` (b73fdcd),
+  so the pin can't disappear with a branch again (#1, reported by
+  [@jason-oliveira](https://github.com/jason-oliveira)).
 - Default mode is now timed recomp: the genuine ROM in LakeSnes's timed frame
   loop, with every function that passes conformance (`k_verified` in `main.c`)
   running natively. The previous native-driven boot chain is `MP_NATIVE=1`.
@@ -40,6 +43,8 @@ versions follow SemVer once the first one is tagged.
 - Root screenshots moved to `docs/screenshots/`.
 
 ### Fixed
+- The mingw-w64 build failed to link (`undefined reference to SDL_main`):
+  `main.c` now includes `<SDL.h>`.
 - APU command-queue pushes (`$01:D308/D328/D348/D368`, `$01:D2BF`) returned in
   8-bit mode: the ROM wraps them in PHP/PLP, the hand-ports did `SEP #$30` and
   left callers running at the wrong width. They also return the advanced
